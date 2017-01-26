@@ -18,6 +18,11 @@ def is_pcap(file_name):
         return True
     else:
         return False
+
+def is__dir(parent, dir_name):
+    if (not dir_name.is_dir() ):
+        parent.mkdir()
+        
         
 def main():
     
@@ -27,7 +32,8 @@ def main():
     pcap_file_list = os.listdir(pcap_dir)
     pcap_file_list.sort()
     print ("- files found %s"%pcap_file_list)
-    
+    out_file= open('processed_files.txt', 'r+') 
+
     # go through list and remove entries that aren't files we care about
     to_be_removed = []
     
@@ -37,6 +43,11 @@ def main():
     for f in pcap_file_list:
         if not is_pcap(f):
             to_be_removed.append(f)
+    for l in out_file.readlines():
+        l=l.split("\n")[0]
+        to_be_removed.append(l)
+    
+    
     for f in to_be_removed:
         print ("Not pcap so not processing %s"%f)
         pcap_file_list.remove(f)
@@ -51,13 +62,14 @@ def main():
       
     sdpwd="S3cur!ty"
     print ("running snort ")
-    out_file= open('processed_files.txt', 'a') 
     pcap_snort=pcap_dir
     for pf in pcap_file_list:
          print ("current file : %s" % pf)
         # since snort takes so long to start up, only run it once at the end on all the pcap files at once
+         pcap_snort+=("/" + pf)         
          output_dirname =pf.split(".")[0]
-         pcap_snort+=("/" + pf)
+         is__dir(pcap_dir,output_dirname)
+         
 
       #snort alert file success
       #sudo snort   -c /etc/nsm/security-onion-eth0/snort.conf  -r "2009-04-20-09-05-46.dmp" -l /mnt/hgfs/cdx_2009/sandbox_win   --daq pcap --daq-mode read-file 
@@ -74,8 +86,8 @@ def main():
          run_snort = subprocess.Popen(['sudo', '-S']+sn, stdin=PIPE, stderr=PIPE,universal_newlines=True)
          sudo_prompt = run_snort.communicate(sdpwd + '\n')[1]            
          run_snort.wait()
-         pcap_snort+= ("\n")
-         out_file.write(pcap_snort)
+         pf+= ("\n")
+         out_file.write(pf)
          out_file.flush()
 
 
