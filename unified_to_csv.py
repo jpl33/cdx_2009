@@ -15,7 +15,7 @@ import logging
 
 
 
-pcap_dir = "/mnt/hgfs/cdx_2009/sandbox_win"
+pcap_dir = "/mnt/hgfs/maccdc_2012"
 pcap=(".pcap",".dmp",",pcapng")
 
 def is_pcap(file_name):
@@ -70,7 +70,7 @@ def main():
     print (len(pcap_file_list))
       
     sdpwd="S3cur!ty"
-    print ("running snort ")
+    
     for pf in pcap_file_list:
          pcap_snort=(pcap_dir+"/" + pf)         
          output_dirname =pf.split(".")[0]
