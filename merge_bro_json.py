@@ -7,7 +7,8 @@ Created on Thu Mar 30 14:20:31 2017
 
 #!/usr/bin/python
 import json
-import pandas
+import pandas as pd
+from pandas import DataFrame
 import pymongo
 import jsonmerge
 import sys
@@ -41,14 +42,41 @@ pcap_dir= 'maccdc2012_00003\\'
 #        li = str(line).strip()
 #        print (li)
         
-data = []
-with open(home_dir+pcap_dir +'ntlm.log','r') as f:
-    for line in itertools.islice(f, 0,3):
-        data.append(json.loads(line))
-#from pandas import DataFrame
+ntlm_data = []
+with open(home_dir+pcap_dir +'ntlm.json','r') as ntlm_f:
+    for line in itertools.islice(ntlm_f, 0,6):
+        ntlm_data.append(json.loads(line))
+dns_data=[]
+with open(home_dir+pcap_dir +'dns.json','r') as dns_f:
+    for line in itertools.islice(dns_f, 0,2):
+        dns_data.append(json.loads(line))
+        
+conn_data=[]
+with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
+    for line in itertools.islice(conn_f, 0,500):
+        conn_data.append(json.loads(line))
+
+df=pd.read_json(home_dir+pcap_dir +'conn.json',orient= 'records',lines=True)
+
+conn_data[0].keys()
+query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
+df.columns
+query2=df.columns
+line1=df[(df['id.orig_h']==query[0]) & (df['id.orig_p']==query[1])]
+'%.2f' % line1['ts']
+ import datetime
+print(
+    datetime.datetime.fromtimestamp(
+        float('%.2f'% line1['ts'])
+    ).strftime('%Y-%m-%d %H:%M:%S.%f')
+)
+'ntlm' in str(line1['service'].values[0]).split(',')
 #df = DataFrame.from_csv(home_dir+pcap_dir +'ntlm.txt', sep="\t")        
 
-
+#    
+#d = datetime.date(2015,1,5)
+#
+#unixtime = time.mktime(d.timetuple())
 
 #file = sys.argv[1]
 #colname = sys.argv[2]
