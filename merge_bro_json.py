@@ -56,26 +56,39 @@ with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
     for line in itertools.islice(conn_f, 0,500):
         conn_data.append(json.loads(line))
 
-df=pd.read_json(home_dir+pcap_dir +'conn.json',orient= 'records',lines=True)
 
 conn_data[0].keys()
 query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
-df.columns
-query2=df.columns
-line1=df[(df['id.orig_h']==query[0]) & (df['id.orig_p']==query[1])]
-'%.2f' % line1['ts']
- import datetime
-print(
-    datetime.datetime.fromtimestamp(
-        float('%.2f'% line1['ts'])
-    ).strftime('%Y-%m-%d %H:%M:%S.%f')
-)
-'ntlm' in str(line1['service'].values[0]).split(',')
-#df = DataFrame.from_csv(home_dir+pcap_dir +'ntlm.txt', sep="\t")        
 
+import ijson
+fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
+#prs1=list(ijson.parse(fconn))
+#for it in ijson.items(fconn, 'item'):
+#   if ((it['id.orig_h']==ntlm_data[0]['id.orig_h']) & (it['id.orig_p']==ntlm_data[0]['id.orig_p'])):
+#       print(it)
+for nt in ntlm_data:
+    for it in ijson.items(fconn, 'item'):
+        if ((it['id.orig_h']==nt['id.orig_h']) & (it['id.orig_p']==nt['id.orig_p'])):
+            print(it)
+#       print(nt['id.orig_h'])
+
+#df = DataFrame.from_csv(home_dir+pcap_dir +'ntlm.txt', sep="\t")        
+#df=pd.read_json(home_dir+pcap_dir +'conn.json',orient= 'records',lines=True)
+#df.columns
+#query2=df.columns
+#line1=df[(df['id.orig_h']==query[0]) & (df['id.orig_p']==query[1])]
+#'%.2f' % line1['ts']
+#'ntlm' in str(line1['service'].values[0]).split(',')
+
+#import datetime
+#print(
+#    datetime.datetime.fromtimestamp(
+#        float('%.2f'% line1['ts'])
+#    ).strftime('%Y-%m-%d %H:%M:%S.%f')
+#)
 #    
 #d = datetime.date(2015,1,5)
-#
+
 #unixtime = time.mktime(d.timetuple())
 
 #file = sys.argv[1]
