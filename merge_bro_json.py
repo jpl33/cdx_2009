@@ -60,16 +60,20 @@ with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
 conn_data[0].keys()
 query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
 
+nt_json=[]
 import ijson
-fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
 #prs1=list(ijson.parse(fconn))
-#for it in ijson.items(fconn, 'item'):
-#   if ((it['id.orig_h']==ntlm_data[0]['id.orig_h']) & (it['id.orig_p']==ntlm_data[0]['id.orig_p'])):
-#       print(it)
-for nt in ntlm_data:
-    for it in ijson.items(fconn, 'item'):
-        if ((it['id.orig_h']==nt['id.orig_h']) & (it['id.orig_p']==nt['id.orig_p'])):
-            print(it)
+fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
+
+for it in ijson.items(fconn, 'item'):
+    if ('ntlm' in it['service']):
+    #if ((it['id.orig_h']==ntlm_data[0]['id.orig_h']) & (it['id.orig_p']==ntlm_data[0]['id.orig_p'])):
+       nt_json.append(it)
+#for nt in ntlm_data:
+#    fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
+#    for it in ijson.items(fconn, 'item'):
+#        if ((it['id.orig_h']==nt['id.orig_h']) & (it['id.orig_p']==nt['id.orig_p'])):
+#            print(it)
 #       print(nt['id.orig_h'])
 
 #df = DataFrame.from_csv(home_dir+pcap_dir +'ntlm.txt', sep="\t")        
