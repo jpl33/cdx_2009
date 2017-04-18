@@ -34,13 +34,12 @@ pcap_dir= 'maccdc2012_00003\\'
 #    skip=lines
 #    print(skip)
 
+mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_resp_h","id.resp_p":"id_resp_p"}
 
-#with open(home_dir+pcap_dir +'ntlm.txt','r') as tsvin, open('new.csv', 'w') as csvout:
-#    tsvin = csv.reader(tsvin, delimiter='\t')
-#    csvout = csv.writer(csvout)
-#    for line in itertools.islice(tsvin, skip, None):
-#        li = str(line).strip()
-#        print (li)
+def mongo_json(mydict):
+    for key,value in mydict.items():
+           if key in mongo_fields:
+               mydict[mongo_fields[key]]= mydict.pop(key)
         
 ntlm_data = []
 with open(home_dir+pcap_dir +'ntlm.json','r') as ntlm_f:
@@ -63,12 +62,12 @@ query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp
 nt_json=[]
 import ijson
 #prs1=list(ijson.parse(fconn))
-fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
+fconn = open(home_dir+pcap_dir +'conn2.json', 'rb')
 
-for it in ijson.items(fconn, 'item'):
-    if ('ntlm' in it['service']):
+#for it in ijson.items(fconn, 'item'):
+#    if ('ntlm' in it['service']):
     #if ((it['id.orig_h']==ntlm_data[0]['id.orig_h']) & (it['id.orig_p']==ntlm_data[0]['id.orig_p'])):
-       nt_json.append(it)
+#       nt_json.append(it)
 #for nt in ntlm_data:
 #    fconn = open(home_dir+pcap_dir +'conn.json', 'rb')
 #    for it in ijson.items(fconn, 'item'):
@@ -97,9 +96,13 @@ for it in ijson.items(fconn, 'item'):
 
 #file = sys.argv[1]
 #colname = sys.argv[2]
-#client = pymongo.MongoClient('localhost')
-#db = client['nettitude']
-#collection = db[colname]
-#with open(file) as f:
-#for line in f.readlines():
-#collection.insert(json.loads(line))
+client = pymongo.MongoClient('localhost')
+db = client['local']
+collection = db['pcap03']
+conn_f.close()
+with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
+    #for line in itertools.islice(conn_f, 0,5):
+    for line in conn_f.readlines():
+       jsndict=json.loads(line)
+       mongo_json(jsndict)
+       collection.insert(jsndict)
