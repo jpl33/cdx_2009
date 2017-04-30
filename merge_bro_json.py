@@ -21,7 +21,8 @@ import itertools
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 pcap_dir= 'maccdc2012_00003\\'
 
-
+#file = sys.argv[1]
+#colname = sys.argv[2]
 #skip=0
 #with open(home_dir+pcap_dir +'ntlm.txt', "r") as f:         
 #    lines=0    
@@ -40,11 +41,27 @@ def mongo_json(mydict):
     for key,value in mydict.items():
            if key in mongo_fields:
                mydict[mongo_fields[key]]= mydict.pop(key)
+               
+#def insert_to_mongo(file_name, collection):
+    #file_name.close()
+    #with open(home_dir+pcap_dir +file,'r') as file_name:
+#    #for line in itertools.islice(file_name, 0,5):
+#    for line in file_name.readlines():
+#       jsndict=json.loads(line)
+#       mongo_json(jsndict)
+#       collection.insert(jsndict)
+def  mongo_trim(myDict):
+      lmng=list(mongo_fields.keys())
+      for ll in lmng:
+          myDict.pop(ll)
+      myDict.pop('uid')
         
 ntlm_data = []
 with open(home_dir+pcap_dir +'ntlm.json','r') as ntlm_f:
-    for line in itertools.islice(ntlm_f, 0,6):
-        ntlm_data.append(json.loads(line))
+       for line in itertools.islice(ntlm_f, 0,6):
+          lin = json.loads(line)
+          lin['match']=0
+          ntlm_data.append(lin)
 dns_data=[]
 with open(home_dir+pcap_dir +'dns.json','r') as dns_f:
     for line in itertools.islice(dns_f, 0,2):
@@ -61,8 +78,7 @@ query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp
 
 nt_json=[]
 import ijson
-#prs1=list(ijson.parse(fconn))
-fconn = open(home_dir+pcap_dir +'conn2.json', 'rb')
+#fconn = open(home_dir+pcap_dir +'conn2.json', 'rb')
 
 #for it in ijson.items(fconn, 'item'):
 #    if ('ntlm' in it['service']):
@@ -94,15 +110,11 @@ fconn = open(home_dir+pcap_dir +'conn2.json', 'rb')
 
 #unixtime = time.mktime(d.timetuple())
 
-#file = sys.argv[1]
-#colname = sys.argv[2]
+
 client = pymongo.MongoClient('localhost')
 db = client['local']
 collection = db['pcap03']
-conn_f.close()
-with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-    #for line in itertools.islice(conn_f, 0,5):
-    for line in conn_f.readlines():
-       jsndict=json.loads(line)
-       mongo_json(jsndict)
-       collection.insert(jsndict)
+for nt in ntlm_data:
+           for doc in collection.find({'uid':nt['uid']}):
+               mongo_trim(nt)
+               collection.update_one({'_id':doc['_id']},{'$set':{'ntlm_data':nt}})
