@@ -114,7 +114,9 @@ import ijson
 client = pymongo.MongoClient('localhost')
 db = client['local']
 collection = db['pcap03']
+nt2=[]
 for nt in ntlm_data:
            for doc in collection.find({'uid':nt['uid']}):
-               mongo_trim(nt)
-               collection.update_one({'_id':doc['_id']},{'$set':{'ntlm_data':nt}})
+               mongo_json(nt)
+               nt2.append(nt)
+               collection.update_one({'_id':doc['_id']},{'$set':{'ntlm':nt2}})
