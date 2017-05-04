@@ -104,10 +104,10 @@ def main():
          
          run_win_cmd = subprocess.check_output(wn_cmd, stdin=PIPE, stderr=PIPE,universal_newlines=True)
          
-         df = pd.read_csv(home_dir+pcap_dir +'conn.log',sep='\t',comment='#',names=conn_frmt)
+         df = pd.read_csv(home_dir+pcap_name+'\\' +'conn.log',sep='\t',comment='#',names=conn_frmt)
          srvc=list(df['service'].unique())
          srvc_nm=df['service'].value_counts()
-         alrt = pd.read_csv(home_dir+pcap_dir +'alert.csv',sep=',',comment='#',names=snrt_frmt)
+         alrt = pd.read_csv(home_dir+pcap_name+'\\'+'alert.csv',sep=',',comment='#',names=snrt_frmt)
          alrt_nm=alrt['msg'].value_counts()
          alrt_sig=alrt['sig_id'].value_counts()
          al1=alrt_sig.to_frame()
