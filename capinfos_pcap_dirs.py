@@ -110,11 +110,19 @@ def main():
          alrt = pd.read_csv(home_dir+pcap_dir +'alert.csv',sep=',',comment='#',names=snrt_frmt)
          alrt_nm=alrt['msg'].value_counts()
          alrt_sig=alrt['sig_id'].value_counts()
+         al1=alrt_sig.to_frame()
+         al2=alrt_nm.to_frame()
+         ddf=pd.concat([al1,al2.set_index(al1.index[:len(al2)])],axis=1)
+         ddf['msg']=al2.index
+         ddf['count']=ddf['sig_id']
+         ddf['sig_id']=al1.index
+         ddf['file']=pcap_name
+         alrt_sum=alrt_sum.append(ddf)
          
          out_file.write(run_win_cmd)
          out_file.write(srvc_nm.to_string())
-         out_file.write(alrt_nm.to_string())
-         out_file.write(alrt_sig.to_string())
+         out_file.write(alrt_sum.to_string())
+         
 
          out_file.flush()
 
