@@ -5,7 +5,8 @@ import datetime
 import subprocess
 import sys
 import pathlib
-import pathlib
+import itertools
+from array import array
 import pandas as pd
 
 from subprocess import Popen, PIPE
@@ -18,6 +19,7 @@ import logging
 #pcap_dir = "/mnt/hgfs/cdx_2009/sandbox_win"
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 pcap_dir= 'maccdc2012_00003\\'
+pcap_name= 'maccdc2012_00001'
 pcap=(".pcap",".dmp",",pcapng")
 conn_frmt=['ts','uid','id.orig_h','id.orig_p','id.resp_h','id.resp_p','proto','service','duration','orig_bytes','resp_bytes','conn_state','local_orig','local_resp','missed_bytes','history','orig_pkts','orig_ip_bytes','resp_pkts','resp_ip_bytes','tunnel_parents','orig_cc','resp_cc','sensorname']
 snrt_frmt=['timestamp','sig_generator','sig_id','sig_rev','msg','proto','src','srcport','dst','dstport','ethsrc','ethdst','ethlen','tcpflags','tcpseq','tcpack','tcplen','tcpwindow','ttl','tos','id','dgmlen','iplen','icmptype','icmpcode','icmpid','icmpseq']
@@ -91,10 +93,10 @@ def main():
          #is__dir(pcap_dir,output_dirname)
          if (hdr==0):
             # capinfos_cmd = "sudo capinfos -m -a -e -r -T %s" %(pcap_snort)
-            win_cmd="capinfos -m -a -e -r -T %s" %(pcap_snort)
+            win_cmd="capinfos -m -c -a -e -r -T %s" %(pcap_snort)
          else:
              #capinfos_cmd = "sudo capinfos -m -a -e -T %s" %(pcap_snort)
-             win_cmd="capinfos -m -a -e -T %s" %(pcap_snort)
+             win_cmd="capinfos -m -c -a -e -T %s" %(pcap_snort)
              
          #sn=capinfos_cmd.split()
          
@@ -104,29 +106,49 @@ def main():
          
          run_win_cmd = subprocess.check_output(wn_cmd, stdin=PIPE, stderr=PIPE,universal_newlines=True)
          
-         df = pd.read_csv(home_dir+pcap_name+'\\' +'conn.log',sep='\t',comment='#',names=conn_frmt)
-         srvc=list(df['service'].unique())
-         srvc_nm=df['service'].value_counts()
+         df_conn = pd.read_csv(home_dir+pcap_name+'\\' +'conn.log',sep='\t',comment='#',names=conn_frmt)
+         srvc=list(df_conn['service'].unique())
+         srvc_nm=df_conn['service'].value_counts()
          alrt = pd.read_csv(home_dir+pcap_name+'\\'+'alert.csv',sep=',',comment='#',names=snrt_frmt)
-         alrt_nm=alrt['msg'].value_counts()
-         alrt_sig=alrt['sig_id'].value_counts()
-         al1=alrt_sig.to_frame()
-         al2=alrt_nm.to_frame()
-         ddf=pd.concat([al1,al2.set_index(al1.index[:len(al2)])],axis=1)
-         ddf['msg']=al2.index
-         ddf['count']=ddf['sig_id']
-         ddf['sig_id']=al1.index
-         ddf['file']=pcap_name
-         alrt_sum=alrt_sum.append(ddf)
+         df=alrt.groupby(['msg','sig_id','sig_rev']).size()
+         df=df.to_frame()
+         df.columns=['count']
+         for id in df.index.levels[0]:
+             ds=df.xs(id,level=0,axis=0)
+             if len(ds)>1:
+                 print(id)
+                 ii=ds.iloc[0]['count']+dss.iloc[1]['count']
+                 df.loc[id]['count']=ii
+                 idx_msg=ss.index.levels[0][ss.index.labels[0][0]]
+                 df=df.drop(idx_msg,level=1)
+         df['msg']=df.index.levels[0]
+         #df.index.levels[0][0:len(df.index.levels[0])]
+         df['sig_id']=df.index.levels[1]
+         i=0
+         ar=array('i',[0])
+         for _ in itertools.repeat(1,len(df)-1):
+             i+=1
+             ar.append(i)
+         idx=pd.Index(ar)
+         df=df.set_index(idx,drop=True)
+         df['file']=pcap_name
+         alrt_sum=alrt_sum.append(df)
          
-         out_file.write(run_win_cmd)
-         out_file.write(srvc_nm.to_string())
-         out_file.write(alrt_sum.to_string())
+         out_file.write('\n'+run_win_cmd)
+         out_file.write('\n'+srvc_nm.to_string())
+         out_file.write('\n'+df.to_string())
          
 
          out_file.flush()
-
-
+    alrt_file= open('alert_summary.txt', 'r+')
+    i=0
+    ar=array('i',[0])
+    for _ in itertools.repeat(0,len(alrt_sum)-1):
+        i+=1
+        ar.append(i)
+    alrt_sum=alrt_sum.set_index(idx,drop=True)
+    alrt_file.write(alrt_sum.to_string())
+    alrt_file.flush()
             
         
     
