@@ -6,6 +6,7 @@ import subprocess
 import sys
 import pathlib
 import itertools
+import numpy as np
 from array import array
 import pandas as pd
 
@@ -113,17 +114,26 @@ def main():
          df=alrt.groupby(['msg','sig_id','sig_rev']).size()
          df=df.to_frame()
          df.columns=['count']
+         idx_msg=[]
+         ard=array('i',df.index.levels[1].values)
          for id in df.index.levels[0]:
              ds=df.xs(id,level=0,axis=0)
              if len(ds)>1:
                  print(id)
-                 ii=ds.iloc[0]['count']+dss.iloc[1]['count']
+                 ii=ds.iloc[0]['count']+ds.iloc[1]['count']
                  df.loc[id]['count']=ii
-                 idx_msg=ss.index.levels[0][ss.index.labels[0][0]]
-                 df=df.drop(idx_msg,level=1)
+                 idx_msg.append(ds.index.levels[0][ds.index.labels[0][0]])
+         
+         if len(idx_msg)>0:
+             df=df.drop(idx_msg,level=1)
+             for j in idx_msg:
+                 ard_id=np.where(ard==j)
+                 ard2=np.delete(ard,ard_id)
+                 ard=ard2
          df['msg']=df.index.levels[0]
          #df.index.levels[0][0:len(df.index.levels[0])]
-         df['sig_id']=df.index.levels[1]
+         
+         df['sig_id']=ard
          i=0
          ar=array('i',[0])
          for _ in itertools.repeat(1,len(df)-1):
@@ -135,8 +145,8 @@ def main():
          alrt_sum=alrt_sum.append(df)
          
          out_file.write('\n'+run_win_cmd)
-         out_file.write('\n'+srvc_nm.to_string())
-         out_file.write('\n'+df.to_string())
+         out_file.write('\n'+srvc_nm.to_csv())
+         out_file.write('\n'+df.to_csv())
          
 
          out_file.flush()
@@ -146,8 +156,9 @@ def main():
     for _ in itertools.repeat(0,len(alrt_sum)-1):
         i+=1
         ar.append(i)
+    idx=pd.Index(ar)
     alrt_sum=alrt_sum.set_index(idx,drop=True)
-    alrt_file.write(alrt_sum.to_string())
+    alrt_file.write(alrt_sum.to_csv())
     alrt_file.flush()
             
         
