@@ -145,6 +145,7 @@ def main():
          df=df.set_index(idx,drop=True)
          df['file']=pcap_name
          alrt_sum=alrt_sum.append(df)
+         srvc_sum=srvc_sum.append(srvc_nm)
          out_file.write('\n'+run_win_cmd)
          out_file.write('\n'+srvc_nm.to_csv())
          out_file.write('\n'+df.to_csv())
