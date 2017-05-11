@@ -82,9 +82,10 @@ def main():
     print ("NUMBER OF FILES IN FOLDER")
     print (len(pcap_file_list))
     alrt_sum=pd.DataFrame()   
-    nmm=[]
+    srvc_sum=pd.DataFrame()
+    
     sdpwd="S3cur!ty"
-    print ("running snort ")
+    print ("running capinfo")
     for pf in pcap_file_list:
          print ("current file : %s" % pf)
         # since snort takes so long to start up, only run it once at the end on all the pcap files at once
@@ -108,8 +109,9 @@ def main():
          run_win_cmd = subprocess.check_output(wn_cmd, stdin=PIPE, stderr=PIPE,universal_newlines=True)
          
          df_conn = pd.read_csv(home_dir+pcap_name+'\\' +'conn.log',sep='\t',comment='#',names=conn_frmt)
-         srvc=list(df_conn['service'].unique())
          srvc_nm=df_conn['service'].value_counts()
+         srvc_nm=srvc_nm.to_frame()
+         srvc_nm['file']=pcap_name
          alrt = pd.read_csv(home_dir+pcap_name+'\\'+'alert.csv',sep=',',comment='#',names=snrt_frmt)
          df=alrt.groupby(['msg','sig_id','sig_rev']).size()
          df=df.to_frame()
@@ -143,14 +145,16 @@ def main():
          df=df.set_index(idx,drop=True)
          df['file']=pcap_name
          alrt_sum=alrt_sum.append(df)
-         
          out_file.write('\n'+run_win_cmd)
          out_file.write('\n'+srvc_nm.to_csv())
          out_file.write('\n'+df.to_csv())
-         
-
          out_file.flush()
-    alrt_file= open('alert_summary.txt', 'r+')
+         
+         prcf_file.write("\n"+pf)
+         prcf_file.flush()
+         
+    alrt_file= open('alert_summary.csv', 'r+')
+    srvc_file= open('service_summary.csv', 'r+')
     i=0
     ar=array('i',[0])
     for _ in itertools.repeat(0,len(alrt_sum)-1):
@@ -159,8 +163,10 @@ def main():
     idx=pd.Index(ar)
     alrt_sum=alrt_sum.set_index(idx,drop=True)
     alrt_file.write(alrt_sum.to_csv())
+    srvc_file.write(srvc_sum.to_csv())
     alrt_file.flush()
-            
+    srvc_file.flush()
+           
         
     
     
