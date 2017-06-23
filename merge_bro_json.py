@@ -6,7 +6,9 @@ Created on Thu Mar 30 14:20:31 2017
 """
 
 #!/usr/bin/python
+
 import json
+import ijson
 import pandas as pd
 from pandas import DataFrame
 import pymongo
@@ -22,6 +24,7 @@ import getopt
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 pcap_dir= 'maccdc2012_00003\\'
+
 
 #file = sys.argv[1]
 #colname = sys.argv[2]
@@ -39,10 +42,28 @@ pcap_dir= 'maccdc2012_00003\\'
 
 mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_resp_h","id.resp_p":"id_resp_p"}
 
+service_log_files={'ntlm':'ntlm.json',
+                   'http':'http.json',
+                   'ftp':'ftp.json',
+                   'dns':'dns.json',
+                   'dhcp':'dhcp.json',
+                   'sip':'sip.json',
+                   'ssh':'ssh.json',
+                   'smb':['smb_files.json','smb_mapping.json'],
+                   'dce_rpc':'dce_rpc.json',
+                   'krb_tcp':'krn_tcp.json',
+                   'mysql':'mysql.json',
+                   'snmp':'snmp.json',
+                   'ssl':'ssl.json'}
 def mongo_json(mydict):
     for key,value in mydict.items():
-           if key in mongo_fields:
-               mydict[mongo_fields[key]]= mydict.pop(key)
+           kk=key.split('.')
+           kd=''
+           if len(kk)>1:
+               for k in kk:
+                   kd=kd+k+'_'
+               kd=kd[:-1]
+               mydict[kd]=mydict.pop(key)   
                
 def  insert_to_mongo(file_name, collection):
      file_name.close()
@@ -69,7 +90,30 @@ def  is_pcap_dir(file_name):
     else:
         return False
         
+def  load_service(file,service):
+     # 'file' is the full-path file name of the json file
+     # 'service' is the BRO service name: 'dns','http','krb_tcp'
+     client = pymongo.MongoClient('localhost')
+     db = client['local']
+     collection = db['temp']
+     service_data=[]
+     with open(file,'r') as srvc_f:
+        for line in itertools.islice(srvc_f, 0,60):
+            ln=json.loads(line)
+            ln['service']=service
+            mongo_json(ln)
+            service_data.append(ln)
+     for svc in service_data:
+        collection.insert_one(svc)
 
+            
+# 
+#    nt2=[]
+#     for nt in ntlm_data:
+#               for doc in collection.find({'uid':nt['uid']}):
+#                   mongo_json(nt)
+#                   nt2.append(nt)
+#                   collection.update_one({'_id':doc['_id']},{'$set':{'ntlm':nt2}})
 
 
 def main():
@@ -91,29 +135,34 @@ def main():
     for r in remove:
         dl.remove(r)
 
+    client = pymongo.MongoClient('localhost')
+    db = client['local']
+    
+    
+    load_service(home_dir+pcap_dir+'dhcp.json','dhcp')
+        
     conn_data=[]
     with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-        for line in itertools.islice(conn_f, 0,500):
-            conn_data.append(json.loads(line))
+        for line in itertools.islice(conn_f, 0,60):
+            ln=json.loads(line) 
+            if 'service' in ln.keys():
+                for svc in ln['service'].split(','):
+                    collection = db['temp']
+                    dd=collection.find_one({'uid':ln['uid'],'service':svc})
+                    if dd==None:
+                        fnm=service_log_files[svc]
+                        for ffnm in fnm:
+                            load_service(home_dir+pcap_dir+ffnm,svc)
+                    
+                    for doc in collection.find({'uid':ln['uid'],'service':svc}):
+                            #collection.update_one({'_id':doc['_id']},{'$set':{doc['service']:doc}})
+                        ln[svc]=doc    
+            conn_data.append(ln)
    
-    ntlm_data = []
-    with open(home_dir+pcap_dir +'ntlm.json','r') as ntlm_f:
-           for line in itertools.islice(ntlm_f, 0,6):
-              lin = json.loads(line)
-              lin['match']=0
-              ntlm_data.append(lin)
-    dns_data=[]
-    with open(home_dir+pcap_dir +'dns.json','r') as dns_f:
-        for line in itertools.islice(dns_f, 0,2):
-            dns_data.append(json.loads(line))
-            
-    
-    
     conn_data[0].keys()
     query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
     
     nt_json=[]
-    import ijson
     #fconn = open(home_dir+pcap_dir +'conn2.json', 'r')
     
     #for it in ijson.items(fconn, 'item'):
@@ -134,27 +183,10 @@ def main():
     
     
     
-#df=pd.read_json(home_dir+pcap_dir +'conn.json',orient= 'records',lines=True)
-#df.columns
-#query2=df.columns
-#line1=df[(df['id.orig_h']==query[0]) & (df['id.orig_p']==query[1])]
-#'%.2f' % line1['ts']
-#'ntlm' in str(line1['service'].values[0]).split(',')
-
-#import datetime
-#print(
-#    datetime.datetime.fromtimestamp(
-#        float('%.2f'% line1['ts'])
-#    ).strftime('%Y-%m-%d %H:%M:%S.%f')
-#)
-#    
-#d = datetime.date(2015,1,5)
-
-#unixtime = time.mktime(d.timetuple())
 
 
-    client = pymongo.MongoClient('localhost')
-    db = client['local']
+
+    
     collection = db['pcap03']
     nt2=[]
     for nt in ntlm_data:
@@ -166,3 +198,52 @@ def main():
 
 
 main()
+
+
+# ntlm_data = []
+#    with open(home_dir+pcap_dir +'ntlm.json','r') as ntlm_f:
+#           for line in itertools.islice(ntlm_f, 0,6):
+#              lin = json.loads(line)
+#              lin['match']=0
+#              ntlm_data.append(lin)
+#    dns_data=[]
+#    with open(home_dir+pcap_dir +'dns.json','r') as dns_f:
+#        for line in itertools.islice(dns_f, 0,2):
+#            dns_data.append(json.loads(line))
+            
+
+#    read  line from json file, filter on src_ip and src_port, extract time stamp
+#df=pd.read_json(home_dir+pcap_dir +'conn.json',orient= 'records',lines=True)
+#df.columns
+#query2=df.columns
+#line1=df[(df['id.orig_h']==query[0]) & (df['id.orig_p']==query[1])]
+#'%.2f' % line1['ts']
+#'ntlm' in str(line1['service'].values[0]).split(',')
+
+#        transform unix timestamp to date_time, and backwards
+#import datetime
+#print(
+#    datetime.datetime.fromtimestamp(
+#        float('%.2f'% line1['ts'])
+#    ).strftime('%Y-%m-%d %H:%M:%S.%f')
+#)
+#    
+#d = datetime.date(2015,1,5)
+
+#unixtime = time.mktime(d.timetuple())
+
+#        iterate on a directory files, filtering for json files
+#    for d in itertools.islice(dl,0,3):
+#        ddl=next(os.walk(home_dir+'\\'+d))[2]
+#        ddl.sort(reverse=True)
+#        remove=[]
+#        for fnm in ddl:
+#            ff=fnm.split('.')
+#            if len(ff)>=2:
+#                if not ff[1] in 'json':
+#                    remove.append(fnm)
+#            else:
+#                remove.append(fnm)
+#        for r in remove:
+#            ddl.remove(r)
+#        print(ddl)
