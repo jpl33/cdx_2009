@@ -20,10 +20,24 @@ import io
 import re
 import itertools
 import getopt
+import logging
+from bson.objectid import ObjectId
 
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 pcap_dir= 'maccdc2012_00003\\'
+
+
+logFormt='%(asctime)s: %(filename)s: %(lineno)d: %(message)s'
+fh=logging.FileHandler(filename=home_dir+'error.log')
+fh.setLevel(logging.DEBUG)
+frmt=logging.Formatter(fmt=logFormt)
+fh.setFormatter(frmt)
+myLogger = logging.getLogger('maccdc')
+myLogger.setLevel(logging.DEBUG)
+myLogger.addHandler(fh)
+
+
 
 
 #file = sys.argv[1]
@@ -98,13 +112,19 @@ def  load_service(file,service):
      collection = db['temp']
      service_data=[]
      with open(file,'r') as srvc_f:
-        for line in itertools.islice(srvc_f, 0,60):
+        for line in srvc_f:
             ln=json.loads(line)
             ln['service']=service
             mongo_json(ln)
+            ln['match']=0
             service_data.append(ln)
      for svc in service_data:
-        collection.insert_one(svc)
+        try:
+            collection.insert_one(svc)
+        except Exception as e:
+            error=str(e)+':svc='+str(svc)+':service='+service+':index='+str(len(service_data))
+            print(error)
+            myLogger.error(error)
 
             
 # 
@@ -139,30 +159,39 @@ def main():
     db = client['local']
     
     
-    load_service(home_dir+pcap_dir+'dhcp.json','dhcp')
         
     conn_data=[]
     with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-        for line in itertools.islice(conn_f, 0,60):
+        for line in itertools.islice(conn_f, 0,7058):
             ln=json.loads(line) 
+            mongo_json(ln)
             if 'service' in ln.keys():
                 for svc in ln['service'].split(','):
                     collection = db['temp']
                     dd=collection.find_one({'uid':ln['uid'],'service':svc})
                     if dd==None:
                         fnm=service_log_files[svc]
-                        for ffnm in fnm:
-                            load_service(home_dir+pcap_dir+ffnm,svc)
-                    
+                        if type(fnm)==list:
+                            for sfnm in fnm:
+                                load_service(home_dir+pcap_dir+sfnm,svc)
+                        else:
+                            load_service(home_dir+pcap_dir+fnm,svc)
+                            
                     for doc in collection.find({'uid':ln['uid'],'service':svc}):
-                            #collection.update_one({'_id':doc['_id']},{'$set':{doc['service']:doc}})
-                        ln[svc]=doc    
+                        if not doc==None:
+                            #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
+                            collection.update_one({'_id':doc['_id']},{'$set':{'match':1}})
+                            doc.pop('_id')
+                            doc.pop('match')
+                            if not svc in ln.keys():
+                                ln.setdefault(svc,[])
+                            ln[svc].append(doc)
             conn_data.append(ln)
    
-    conn_data[0].keys()
-    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
-    
-    nt_json=[]
+#    conn_data[0].keys()
+#    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
+#    
+#    nt_json=[]
     #fconn = open(home_dir+pcap_dir +'conn2.json', 'r')
     
     #for it in ijson.items(fconn, 'item'):
@@ -176,10 +205,7 @@ def main():
     #            print(it)
     #       print(nt['id.orig_h'])
     
-    df = pd.read_csv(home_dir+pcap_dir +'conn.log',sep='\t',comment='#',names=['ts','uid','id.orig_h','id.orig_p','id.resp_h','id.resp_p','proto','service','duration','orig_bytes','resp_bytes','conn_state','local_orig','local_resp','missed_bytes','history','orig_pkts','orig_ip_bytes','resp_pkts','resp_ip_bytes','tunnel_parents','orig_cc','resp_cc','sensorname'])
-    srvc=list(df['service'].unique())
-    srvc_nm=df['service'].value_counts()
-    print(srvc)
+    
     
     
     
@@ -188,12 +214,9 @@ def main():
 
     
     collection = db['pcap03']
-    nt2=[]
-    for nt in ntlm_data:
-               for doc in collection.find({'uid':nt['uid']}):
-                   mongo_json(nt)
-                   nt2.append(nt)
-    #               collection.update_one({'_id':doc['_id']},{'$set':{'ntlm':nt2}})
+    for cn in conn_data:
+        collection.insert_one(cn)
+    
     
 
 
