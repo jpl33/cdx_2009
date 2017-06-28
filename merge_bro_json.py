@@ -8,24 +8,20 @@ Created on Thu Mar 30 14:20:31 2017
 #!/usr/bin/python
 
 import json
-import ijson
 import pandas as pd
-from pandas import DataFrame
 import pymongo
-import jsonmerge
 import sys
 import os
-import csv
-import io
-import re
+#import csv
+#import io
+#import re
 import itertools
 import getopt
 import logging
-from bson.objectid import ObjectId
 
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00003\\'
+pcap_dir= 'maccdc2012_00002\\'
 
 
 logFormt='%(asctime)s: %(filename)s: %(lineno)d: %(message)s'
@@ -157,25 +153,34 @@ def main():
 
     client = pymongo.MongoClient('localhost')
     db = client['local']
-    
+    collection = db['temp']
+    collection_pcap = db['pcap02']
+    i=0
     
         
     conn_data=[]
     with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-        for line in itertools.islice(conn_f, 0,7058):
-            ln=json.loads(line) 
+        #for line in itertools.islice(conn_f, 0,7058):
+        for line in conn_f:   
+            ln=json.loads(line)
+            i+=1
             mongo_json(ln)
             if 'service' in ln.keys():
                 for svc in ln['service'].split(','):
-                    collection = db['temp']
                     dd=collection.find_one({'uid':ln['uid'],'service':svc})
                     if dd==None:
-                        fnm=service_log_files[svc]
-                        if type(fnm)==list:
-                            for sfnm in fnm:
-                                load_service(home_dir+pcap_dir+sfnm,svc)
-                        else:
-                            load_service(home_dir+pcap_dir+fnm,svc)
+                        try:
+                        #if svc in service_log_files.keys():
+                            fnm=service_log_files[svc]
+                        except Exception as e:
+                            error=str(e)+':svc='+str(svc)+':pcap_dir='+pcap_dir+':index='+str(i)
+        #                   print(error)
+                            myLogger.error(error)
+                            if type(fnm)==list:
+                                for sfnm in fnm:
+                                    load_service(home_dir+pcap_dir+sfnm,svc)
+                            else:
+                                load_service(home_dir+pcap_dir+fnm,svc)
                             
                     for doc in collection.find({'uid':ln['uid'],'service':svc}):
                         if not doc==None:
@@ -186,7 +191,14 @@ def main():
                             if not svc in ln.keys():
                                 ln.setdefault(svc,[])
                             ln[svc].append(doc)
-            conn_data.append(ln)
+            #conn_data.append(ln)
+            try:
+#            myLogger.error(str(cn))
+                collection_pcap.insert_one(ln)
+            except Exception as e:
+                error=str(e)+':cn='+str(ln)+':index='+str(i)
+#                print(error)
+                myLogger.error(error)
    
 #    conn_data[0].keys()
 #    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
@@ -213,10 +225,8 @@ def main():
 
 
     
-    collection = db['pcap03']
-    for cn in conn_data:
-        collection.insert_one(cn)
     
+        
     
 
 
