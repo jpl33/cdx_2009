@@ -21,7 +21,7 @@ import logging
 
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00002\\'
+pcap_dir= 'maccdc2012_00003\\'
 
 
 logFormt='%(asctime)s: %(filename)s: %(lineno)d: %(message)s'
@@ -67,13 +67,15 @@ service_log_files={'ntlm':'ntlm.json',
                    'snmp':'snmp.json',
                    'ssl':'ssl.json'}
 collection_filters={'default':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING)]   ,
-                    'http':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('uri_length', pymongo.ASCENDING)]   ,
+                    'sip':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('status_msg', pymongo.ASCENDING)]   ,
+                    'ftp':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('command', pymongo.ASCENDING)]   ,           
+                    'http':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('uri_length', pymongo.ASCENDING),('trans_depth', pymongo.ASCENDING)]   ,
                     'dns':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('trans_id', pymongo.ASCENDING)]   ,
                     'conn':[('id_orig_h',pymongo.ASCENDING),('id_orig_p',pymongo.ASCENDING),('id_resp_h',pymongo.ASCENDING),('id_resp_p',pymongo.ASCENDING)]}
 client = pymongo.MongoClient('localhost')
 db = client['local']
 collection = db['temp']
-collection_pcap = db['pcap02']
+collection_pcap = db['pcap03']
 
 def get_db():
     return db
