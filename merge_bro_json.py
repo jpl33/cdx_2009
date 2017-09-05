@@ -109,10 +109,17 @@ def  is_pcap_dir(file_name):
     else:
         return False
         
-def  load_service(file,service):
+def  load_service(file,service,lst_flag):
      # 'file' is the full-path file name of the json file
      # 'service' is the BRO service name: 'dns','http','krb_tcp'
-     colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+     if lst_flag==True:
+         if pcap_dir[:-1]+'_'+service in db.collection_names():
+             colt=db[pcap_dir[:-1]+'_'+service]
+         else:   
+             colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+     else:   
+         colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+     
      if service =='smb':
          result = db[colt.name].create_index(collection_filters['default'])
      else:
@@ -130,7 +137,10 @@ def  load_service(file,service):
             i+=1
             ln['match']=0
             if service=='http':
-                ln['uri_length']=len(ln['uri'])
+                if 'uri' in ln.keys():
+                    ln['uri_length']=len(ln['uri'])
+                else:
+                    ln['uri_length']=0
             try:
                 colt.insert_one(ln)
             except Exception as e:
@@ -187,10 +197,10 @@ def main():
                             myLogger.error(error)
                         if type(fnm)==list:
                             for sfnm in fnm:
-                                colt=load_service(home_dir+pcap_dir+sfnm,svc)
+                                colt=load_service(home_dir+pcap_dir+sfnm,svc,True)
                                 collections[svc]=colt
                         else:
-                            colt=load_service(home_dir+pcap_dir+fnm,svc)
+                            colt=load_service(home_dir+pcap_dir+fnm,svc,False)
                             collections[svc]=colt
                             
                     colt=collections[svc]
