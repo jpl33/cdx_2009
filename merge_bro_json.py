@@ -55,16 +55,30 @@ mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_re
 service_log_files={'ntlm':'ntlm.json',
                    'http':'http.json',
                    'ftp':'ftp.json',
+                   'ftp-data':'ftp.json',
                    'dns':'dns.json',
                    'dhcp':'dhcp.json',
                    'sip':'sip.json',
                    'ssh':'ssh.json',
                    'smb':['smb_files.json','smb_mapping.json'],
                    'dce_rpc':'dce_rpc.json',
-                   'krb_tcp':'krn_tcp.json',
+                   'krb_tcp':'kerberos.json',
                    'mysql':'mysql.json',
                    'snmp':'snmp.json',
                    'ssl':'ssl.json'}
+collection_filters={'default':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING)]   ,
+                    'http':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('uri_length', pymongo.ASCENDING)]   ,
+                    'dns':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('trans_id', pymongo.ASCENDING)]   ,
+                    'conn':[('id_orig_h',pymongo.ASCENDING),('id_orig_p',pymongo.ASCENDING),('id_resp_h',pymongo.ASCENDING),('id_resp_p',pymongo.ASCENDING)]}
+client = pymongo.MongoClient('localhost')
+db = client['local']
+collection = db['temp']
+collection_pcap = db['pcap02']
+
+def get_db():
+    return db
+
+
 def mongo_json(mydict):
     for key,value in mydict.items():
            kk=key.split('.')
@@ -84,11 +98,6 @@ def  insert_to_mongo(file_name, collection):
            mongo_json(jsndict)
            collection.insert(jsndict)
 
-def  mongo_trim(myDict):
-      lmng=list(mongo_fields.keys())
-      for ll in lmng:
-          myDict.pop(ll)
-      myDict.pop('uid')
       
 
 def  is_pcap_dir(file_name):
@@ -103,34 +112,33 @@ def  is_pcap_dir(file_name):
 def  load_service(file,service):
      # 'file' is the full-path file name of the json file
      # 'service' is the BRO service name: 'dns','http','krb_tcp'
-     client = pymongo.MongoClient('localhost')
-     db = client['local']
-     collection = db['temp']
-     service_data=[]
+     colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+     if service =='smb':
+         result = db[colt.name].create_index(collection_filters['default'])
+     else:
+         if service in collection_filters.keys():
+             result = db[colt.name].create_index(collection_filters[service],unique=True)
+         else:
+             result = db[colt.name].create_index(collection_filters['default'],unique=True)
+        
+     i=0
      with open(file,'r') as srvc_f:
         for line in srvc_f:
             ln=json.loads(line)
             ln['service']=service
             mongo_json(ln)
+            i+=1
             ln['match']=0
-            service_data.append(ln)
-     for svc in service_data:
-        try:
-            collection.insert_one(svc)
-        except Exception as e:
-            error=str(e)+':svc='+str(svc)+':service='+service+':index='+str(len(service_data))
-            print(error)
-            myLogger.error(error)
-
+            if service=='http':
+                ln['uri_length']=len(ln['uri'])
+            try:
+                colt.insert_one(ln)
+            except Exception as e:
+                    error=str(e)+':svc='+str(ln)+':service='+service+':index='+str(i)
+                    myLogger.error(error)
+                    exit
+     return colt
             
-# 
-#    nt2=[]
-#     for nt in ntlm_data:
-#               for doc in collection.find({'uid':nt['uid']}):
-#                   mongo_json(nt)
-#                   nt2.append(nt)
-#                   collection.update_one({'_id':doc['_id']},{'$set':{'ntlm':nt2}})
-
 
 def main():
     
@@ -151,24 +159,25 @@ def main():
     for r in remove:
         dl.remove(r)
 
-    client = pymongo.MongoClient('localhost')
-    db = client['local']
-    collection = db['temp']
-    collection_pcap = db['pcap02']
+    #client = pymongo.MongoClient('localhost')
+    #db = client['local']
+    collection = get_db()['temp']
+    #collection_pcap = get_db()['pcap02']
     i=0
     
-        
-    conn_data=[]
+    collection_pcap=pymongo.collection.Collection(get_db(),pcap_dir[:-1]+'_conn',create=True)
+    result = db[collection_pcap.name].create_index(collection_filters['conn'])
+    collections={}
+    
     with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-        #for line in itertools.islice(conn_f, 0,7058):
+        #for line in itertools.islice(conn_f, 929011,None):
         for line in conn_f:   
             ln=json.loads(line)
             i+=1
             mongo_json(ln)
             if 'service' in ln.keys():
                 for svc in ln['service'].split(','):
-                    dd=collection.find_one({'uid':ln['uid'],'service':svc})
-                    if dd==None:
+                    if svc not in collections.keys():
                         try:
                         #if svc in service_log_files.keys():
                             fnm=service_log_files[svc]
@@ -176,29 +185,30 @@ def main():
                             error=str(e)+':svc='+str(svc)+':pcap_dir='+pcap_dir+':index='+str(i)
         #                   print(error)
                             myLogger.error(error)
-                            if type(fnm)==list:
-                                for sfnm in fnm:
-                                    load_service(home_dir+pcap_dir+sfnm,svc)
-                            else:
-                                load_service(home_dir+pcap_dir+fnm,svc)
+                        if type(fnm)==list:
+                            for sfnm in fnm:
+                                colt=load_service(home_dir+pcap_dir+sfnm,svc)
+                                collections[svc]=colt
+                        else:
+                            colt=load_service(home_dir+pcap_dir+fnm,svc)
+                            collections[svc]=colt
                             
-                    for doc in collection.find({'uid':ln['uid'],'service':svc}):
+                    colt=collections[svc]
+                    for doc in colt.find({'uid':ln['uid'],'service':svc}):
                         if not doc==None:
-                            #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
-                            collection.update_one({'_id':doc['_id']},{'$set':{'match':1}})
-                            doc.pop('_id')
-                            doc.pop('match')
-                            if not svc in ln.keys():
-                                ln.setdefault(svc,[])
-                            ln[svc].append(doc)
-            #conn_data.append(ln)
+                            if svc in service_log_files:
+                                #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
+                                colt.update_one({'_id':doc['_id']},{'$set':{'match':1}})
+                                if not svc in ln.keys():
+                                    ln.setdefault(svc,[])
+                                ln[svc].append(doc['_id'])
+            
             try:
-#            myLogger.error(str(cn))
                 collection_pcap.insert_one(ln)
             except Exception as e:
                 error=str(e)+':cn='+str(ln)+':index='+str(i)
-#                print(error)
                 myLogger.error(error)
+                exit
    
 #    conn_data[0].keys()
 #    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
