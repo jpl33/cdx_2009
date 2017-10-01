@@ -18,10 +18,11 @@ import os
 import itertools
 import getopt
 import logging
+import time
 
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00003\\'
+#pcap_dir2= 'maccdc2012_00004\\'
 
 
 logFormt='%(asctime)s: %(filename)s: %(lineno)d: %(message)s'
@@ -55,7 +56,7 @@ mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_re
 service_log_files={'ntlm':'ntlm.json',
                    'http':'http.json',
                    'ftp':'ftp.json',
-                   'ftp-data':'ftp.json',
+                   #'ftp-data':'ftp.json',
                    'dns':'dns.json',
                    'dhcp':'dhcp.json',
                    'sip':'sip.json',
@@ -67,6 +68,7 @@ service_log_files={'ntlm':'ntlm.json',
                    'snmp':'snmp.json',
                    'ssl':'ssl.json'}
 collection_filters={'default':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING)]   ,
+                    'ntlm':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('username', pymongo.ASCENDING)]   ,
                     'sip':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('status_msg', pymongo.ASCENDING)]   ,
                     'ftp':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('command', pymongo.ASCENDING)]   ,           
                     'http':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDING),('uri_length', pymongo.ASCENDING),('trans_depth', pymongo.ASCENDING)]   ,
@@ -74,8 +76,8 @@ collection_filters={'default':[('uid', pymongo.ASCENDING),('ts', pymongo.ASCENDI
                     'conn':[('id_orig_h',pymongo.ASCENDING),('id_orig_p',pymongo.ASCENDING),('id_resp_h',pymongo.ASCENDING),('id_resp_p',pymongo.ASCENDING)]}
 client = pymongo.MongoClient('localhost')
 db = client['local']
-collection = db['temp']
-collection_pcap = db['pcap03']
+#collection = db['temp']
+#collection_pcap = db['pcap03']
 
 def get_db():
     return db
@@ -91,17 +93,14 @@ def mongo_json(mydict):
                kd=kd[:-1]
                mydict[kd]=mydict.pop(key)   
                
-def  insert_to_mongo(file_name, collection):
-     file_name.close()
-     with open(home_dir+pcap_dir +file_name,'r') as file_name:
-     #for line in itertools.islice(file_name, 0,5):
-        for line in file_name.readlines():
-           jsndict=json.loads(line)
-           mongo_json(jsndict)
-           collection.insert(jsndict)
-
       
-
+def  remove_collections(prefix):
+     col_lst=get_db().collection_names() 
+     for col in col_lst:
+         if col.startswith(prefix):
+             get_db().drop_collection(col)
+              
+              
 def  is_pcap_dir(file_name):
     """simple function, user modifiable, to determine if a given file is in fact a PCAP file we want to process
     Currently just uses the naming convention"""
@@ -111,32 +110,34 @@ def  is_pcap_dir(file_name):
     else:
         return False
         
-def  load_service(file,service,lst_flag):
+def  load_service(home_dir,file,pcap_dir,service,lst_flag):
      # 'file' is the full-path file name of the json file
      # 'service' is the BRO service name: 'dns','http','krb_tcp'
      if lst_flag==True:
-         if pcap_dir[:-1]+'_'+service in db.collection_names():
-             colt=db[pcap_dir[:-1]+'_'+service]
+         if pcap_dir+'_'+service in db.collection_names():
+             colt=db[pcap_dir+'_'+service]
          else:   
-             colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+             colt=pymongo.collection.Collection(db,pcap_dir+'_'+service,create=True)
      else:   
-         colt=pymongo.collection.Collection(db,pcap_dir[:-1]+'_'+service,create=True)
+         colt=pymongo.collection.Collection(db,pcap_dir+'_'+service,create=True)
      
-     if service =='smb':
-         result = db[colt.name].create_index(collection_filters['default'])
-     else:
-         if service in collection_filters.keys():
-             result = db[colt.name].create_index(collection_filters[service],unique=True)
-         else:
-             result = db[colt.name].create_index(collection_filters['default'],unique=True)
-        
+     
      i=0
+     old_i=0
+     file=home_dir+pcap_dir+'//'+file
+     
      with open(file,'r') as srvc_f:
         for line in srvc_f:
             ln=json.loads(line)
             ln['service']=service
             mongo_json(ln)
             i+=1
+            if i-old_i>10000:
+                old_i=i
+                time.sleep(20)
+                slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+service+':i='+str(i)
+                myLogger.error(slp_msg)
+
             ln['match']=0
             if service=='http':
                 if 'uri' in ln.keys():
@@ -146,6 +147,7 @@ def  load_service(file,service,lst_flag):
             try:
                 colt.insert_one(ln)
             except Exception as e:
+                if not service=='dns':
                     error=str(e)+':svc='+str(ln)+':service='+service+':index='+str(i)
                     myLogger.error(error)
                     exit
@@ -168,59 +170,81 @@ def main():
     for d in dl:
         if ( not is_pcap_dir(d)):
             remove.append(d)
+    prcs_file= open('processed_merge_files.txt', 'r+')
+    for l in prcs_file.readlines():
+        l=l.split("\n")[0]
+        remove.append(l)
     for r in remove:
         dl.remove(r)
 
     #client = pymongo.MongoClient('localhost')
     #db = client['local']
-    collection = get_db()['temp']
+    #collection = get_db()['temp']
     #collection_pcap = get_db()['pcap02']
-    i=0
     
-    collection_pcap=pymongo.collection.Collection(get_db(),pcap_dir[:-1]+'_conn',create=True)
-    result = db[collection_pcap.name].create_index(collection_filters['conn'])
-    collections={}
-    
-    with open(home_dir+pcap_dir +'conn.json','r') as conn_f:
-        #for line in itertools.islice(conn_f, 929011,None):
-        for line in conn_f:   
-            ln=json.loads(line)
-            i+=1
-            mongo_json(ln)
-            if 'service' in ln.keys():
-                for svc in ln['service'].split(','):
-                    if svc not in collections.keys():
-                        try:
-                        #if svc in service_log_files.keys():
-                            fnm=service_log_files[svc]
-                        except Exception as e:
-                            error=str(e)+':svc='+str(svc)+':pcap_dir='+pcap_dir+':index='+str(i)
-        #                   print(error)
-                            myLogger.error(error)
-                        if type(fnm)==list:
-                            for sfnm in fnm:
-                                colt=load_service(home_dir+pcap_dir+sfnm,svc,True)
-                                collections[svc]=colt
-                        else:
-                            colt=load_service(home_dir+pcap_dir+fnm,svc,False)
-                            collections[svc]=colt
-                            
-                    colt=collections[svc]
-                    for doc in colt.find({'uid':ln['uid'],'service':svc}):
-                        if not doc==None:
-                            if svc in service_log_files:
-                                #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
-                                colt.update_one({'_id':doc['_id']},{'$set':{'match':1}})
-                                if not svc in ln.keys():
-                                    ln.setdefault(svc,[])
-                                ln[svc].append(doc['_id'])
+    for pcap_dir in dl:
+        coll_name=pcap_dir+'_conn'
+        if not coll_name in get_db().collection_names():
+            collection_pcap=pymongo.collection.Collection(get_db(),coll_name,create=True)
+            coll_count=0
+            collections={}
+        else:
+            collection_pcap=get_db().get_collection(coll_name)
+            coll_count=get_db().get_collection(coll_name).count()
+            col_lst=get_db().collection_names() 
             
-            try:
-                collection_pcap.insert_one(ln)
-            except Exception as e:
-                error=str(e)+':cn='+str(ln)+':index='+str(i)
-                myLogger.error(error)
-                exit
+        result = db[collection_pcap.name].create_index(collection_filters['conn'])
+        
+        i=0
+        old_i=0
+        with open(home_dir+pcap_dir +'\\conn.json','r') as conn_f:
+            for line in itertools.islice(conn_f, coll_count,None):
+            #for line in conn_f:   
+                ln=json.loads(line)
+                i+=1
+                if i-old_i>100000:
+                    old_i=i
+                    time.sleep(20)
+                    slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+'conn'+':i='+str(i)
+                    myLogger.error(slp_msg)
+                mongo_json(ln)
+                if 'service' in ln.keys():
+                    for svc in ln['service'].split(','):
+                        if svc not in collections.keys():
+                            try:
+                            #if svc in service_log_files.keys():
+                                fnm=service_log_files[svc]
+                            except Exception as e:
+                                error=str(e)+':svc='+str(svc)+':pcap_dir='+pcap_dir+':index='+str(i)
+                                myLogger.error(error)
+                                continue
+                            if type(fnm)==list:
+                                for sfnm in fnm:
+                                    colt=load_service(home_dir,sfnm,pcap_dir,svc,True)
+                                    collections[svc]=colt
+                            else:
+                                colt=load_service(home_dir,fnm,pcap_dir,svc,False)
+                                collections[svc]=colt
+                                
+                        colt=collections[svc]
+                        for doc in colt.find({'uid':ln['uid'],'service':svc}):
+                            if not doc==None:
+                                if svc in service_log_files:
+                                    #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
+                                    colt.update_one({'_id':doc['_id']},{'$set':{'match':1}})
+                                    if not svc in ln.keys():
+                                        ln.setdefault(svc,[])
+                                    ln[svc].append(doc['_id'])
+                
+                try:
+                    collection_pcap.insert_one(ln)
+                except Exception as e:
+                    error=str(e)+':cn='+str(ln)+':index='+str(i)
+                    myLogger.error(error)
+                    exit
+                    
+        prcs_file.write("\n"+pcap_dir)
+        prcs_file.flush()
    
 #    conn_data[0].keys()
 #    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
