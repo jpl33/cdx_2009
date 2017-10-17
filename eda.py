@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[2]:
+
+
 # -*- coding: utf-8 -*-
 import pandas as pd
 
@@ -17,6 +23,8 @@ import matplotlib.pyplot as plt
  
 import seaborn as sns; sns.set(style="ticks", color_codes=True)
 mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_resp_h","id.resp_p":"id_resp_p"}
+
+vuln_service={'http':0,'ftp':0,'dns':0,'dhcp':0,'sip':0,'ssh':0,'smb':0,'dce_rpc':0,'mysql':0,'snmp':0,'ssl':0}
 
 def get_db():
     return db
@@ -39,13 +47,34 @@ interval_size=100
 intervals=10#round(finish/interval_size)
 remainder=finish%interval_size
 df_collection = {}
+df_feature_cols=['duration','orig_ip_bytes','resp_ip_bytes','orig_pkts','resp_pkts']
+
+
+# In[ ]:
+
+
 for index in range(intervals):
+    from IPython.core.debugger import Pdb; 
     time.sleep(30)
     doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
-    df =  pd.DataFrame(list(doc_t))    
-    s1=df[['duration','orig_ip_bytes','resp_ip_bytes','orig_pkts','resp_pkts']].describe()
+    df =  pd.DataFrame(list(doc_t)) 
+    df_cnt=df._id.count()
+    srv_cnt= df['service'].value_counts()
+    srv_dict={}
+    srv_dfs={}
+    for nm in srv_cnt:    
+        srv_dict[srv_cnt[srv_cnt==nm].index[0]]=nm
+        if nm/df_cnt>0.2:
+            d1=df[df.service==srv_cnt[srv_cnt==nm].index[0]]
+            srv_dfs[srv_cnt[srv_cnt==nm].index[0]]=d1[df_feature_cols]
+        #print(nm)
+        #print(srv_cnt[srv_cnt==nm].index[0])
+    Pdb().set_trace()
+    
+    df_http=df[df.service=='http']
+    s1=df[df_feature_cols].describe()
     sum_t=pd.DataFrame(s1)
-    mdd=df[['duration','orig_ip_bytes','resp_ip_bytes','orig_pkts','resp_pkts']].median()
+    mdd=df[df_feature_cols].median()
     sum_t=pd.concat([sum_t,pd.DataFrame(mdd).T])
     sum_t=sum_t.rename(index={0:'median'})
     df_collection[index]=sum_t
@@ -61,3 +90,4 @@ with open('result.json', 'w') as fp:
 
 #dfc2['age'].hist(by=dfc2['vote'])
 g = sns.pairplot(df)
+
