@@ -299,6 +299,20 @@ main()
 #'%.2f' % line1['ts']
 #'ntlm' in str(line1['service'].values[0]).split(',')
 
+<<<<<<< HEAD
+=======
+#        transform unix timestamp to date_time, and backwards
+#import datetime
+#print(
+#    datetime.datetime.fromtimestamp(
+#        float('%.2f'% line1['ts'])
+#    ).strftime('%Y-%m-%d %H:%M:%S.%f')
+#)
+#    
+#d = datetime.date(2015,1,5)
+
+#unixtime = time.mktime(d.timetuple())
+>>>>>>> ef411919f919c422455560801715744c8d68f7f6
 
 #        iterate on a directory files, filtering for json files
 #    for d in itertools.islice(dl,0,3):
