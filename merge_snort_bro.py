@@ -9,7 +9,7 @@
 Created on Thu Mar 30 14:20:31 2017
 
 @author: root
-"""
+in"""
 
 #!/usr/bin/python
 
@@ -27,7 +27,6 @@ import logging
 import time
 import datetime
 from IPython.core.debugger import Pdb;
-
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 #pcap_dir2= 'maccdc2012_00004\\'
@@ -164,6 +163,28 @@ def   time_to_ts(row_ts):
 
 
 
+def   classtypes():
+      with open('D:\personal\msc\maccdc_2012\downloaded.rules','r') as conn_f:
+          mdict={} 
+          i=0
+          for line in itertools.islice(conn_f, 7,None):  
+                ll=line.strip().split(';')
+                i+=1
+                cls=[s for s in ll if 'classtype' in s]
+                sid=[s for s in ll if 'sid:' in s]
+                if len(cls)>0:
+                    cls1=cls[0].split(':')[1]
+                if len(sid)>0:
+                    sid1=sid[0].split(':')[1]
+                mdict[sid1]=cls1
+          df=pd.DataFrame.from_dict(mdict,orient='index')
+          df.to_csv("sid_classtype.csv")
+          return df
+#classtype=df.loc[sid][0]
+          
+
+
+
     
     
 
@@ -173,7 +194,7 @@ def   time_to_ts(row_ts):
 
 
 def main():
-    
+    classtypes()
 #   opts, args = getopt.getopt(sys.argv[1:],"h:t:")
 #    for opt, arg in opts:
 #        if opt in ("-h"):
@@ -206,29 +227,49 @@ def main():
         i=0
         old_i=0
         
+        sid_class=classtypes()
         
         with open(home_dir+pcap_dir +'\\alert.csv','r') as alrt_f:
             
                 reader = csv.reader(alrt_f)
                 for row in reader:
                     i+=1
+                    if i-old_i>2000:
+                        old_i=i
+                        time.sleep(20)
+                        slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':'+' file='+alrt_f+':i='+str(i)
+                        myLogger.error(slp_msg)
                     row_dict=dict(zip(snrt_frmt,row))
                     row_dict['timestamp']=time_to_ts(row_dict['timestamp'])
+                    try: 
+                        cls=sid_class.loc[row_dict['sig_id']][0]
+                    except Exception as e: 
+                        error=str(e)+': sig_id found no classtype :coll_name='+coll_name+':sig_id='+row_dict['sig_id']+':i='+str(i)
+                        myLogger.error(error)
+                        cls=' '
+                        exit
                     
-                    pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
+                    if row_dict['proto']=='ICMP':
+                        pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
+                                                  {'id_resp_h':row_dict['dst']},
+                                                  {'proto':'icmp'}]  
+                                            }
+                                  }
+                    else:
+                        pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
                                                   {'id_orig_p':int(row_dict['srcport'])},
                                                   {'id_resp_h':row_dict['dst']},
                                                   {'id_resp_p':int(row_dict['dstport'])}
                                                  ]  
                                        }
                             }
- 
+                    
                     pip_add_flds={ '$addFields': { 'time_rt':
                                                     { '$or':[
                                                         { '$eq': ['$ts',row_dict['timestamp']]},
                                                         { '$and' : [
-                                                                      { '$gt': [  {'$add': ['$ts', '$duration']},row_dict['timestamp'] ]},
-                                                                      { '$lt':['$ts',row_dict['timestamp']] }
+                                                                      { '$gte': [  {'$add': ['$ts', '$duration']},row_dict['timestamp'] ]},
+                                                                      { '$lte':['$ts',row_dict['timestamp']] }
                                                                    ] 
                                                         }
                                                             ]  
@@ -239,33 +280,48 @@ def main():
                     
                     pipeline = [ pip_mtc,pip_add_flds,pip_mtc2    ]
                     t_docs=collection_pcap.aggregate(pipeline)
-                    Pdb().set_trace()
+                    #Pdb().set_trace()
                     cursorlist = [c for c in t_docs]
                     len_t_docs= len(cursorlist)
                     if len_t_docs==0:
-                        msg='snort alert fond no match: collection: '+collection_pcap+': directory= '+pcap_dir+': i= '+str(i)
-                        myLogger.error(slp_msg)
+                        msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+': i= '+str(i)
+                        myLogger.error(msg)
                         exit
                     else:                         
                         for doc in cursorlist:
                             doc.keys()
                             if 'attack' not in doc.keys():
+                                #doc.setdefault('attack',[])
+                                #doc[attack].append({})
                                 collection_pcap.update_one({'_id':doc['_id']},{'$set':
-                                                                        {'attack':{
-                                                                            'sig_id':row_dict['sig_id'],
-                                                                            'sig_rev':row_dict['sig_rev'],
-                                                                            'msg':row_dict['msg']
-                                                                                  }
+                                                                        {'attack':{ 'details':[{'sig_id':row_dict['sig_id'],
+                                                                                                'sig_rev':row_dict['sig_rev'],
+                                                                                                'msg':row_dict['msg'],
+                                                                                                'classtype':cls
+                                                                                               }],'count':1}
+                                                                         }
+                                                                      }
+                                                             )
+                                #print(doc)
+                                break
+                            else:
+                                collection_pcap.update_one({'_id':doc['_id']},{'$push':
+                                                                        {'attack.details':{ 'sig_id':row_dict['sig_id'],
+                                                                                                'sig_rev':row_dict['sig_rev'],
+                                                                                                'msg':row_dict['msg'],
+                                                                                                'classtype':cls
+                                                                                                }
                                                                          }
                                                                       }
                                                  )
-                                print(doc)
-                                break
-                            else:
-                                continue
+                                collection_pcap.update_one({'_id':doc['_id']},{'$set':
+                                                                        {'attack.count':doc['attack']['count']+1}
+                                                                                })
+                                
+                                
                             
                 
-                
+                exit
                 break
     
                 
