@@ -165,19 +165,28 @@ def   time_to_ts(row_ts):
 
 def   classtypes():
       with open('D:\personal\msc\maccdc_2012\downloaded.rules','r') as conn_f:
-          mdict={} 
+          ltup=[] 
           i=0
           for line in itertools.islice(conn_f, 7,None):  
                 ll=line.strip().split(';')
                 i+=1
                 cls=[s for s in ll if 'classtype' in s]
                 sid=[s for s in ll if 'sid:' in s]
+                flw=[s for s in ll if 'flow:' in s]
                 if len(cls)>0:
                     cls1=cls[0].split(':')[1]
                 if len(sid)>0:
                     sid1=sid[0].split(':')[1]
-                mdict[sid1]=cls1
-          df=pd.DataFrame.from_dict(mdict,orient='index')
+                    if len(flw)>0:
+                        flw1=flw[0].split(':')[1]
+                        if "from_server" in flw1:
+                            flw2=False
+                        else:
+                            flw2=True
+                #mdict[sid1]=cls1
+                r1=(sid1,cls1,flw2)
+                ltup.append(r1)
+          df=pd.DataFrame(ltup,columns=['sig_id','classtype','from_client'])
           df.to_csv("sid_classtype.csv")
           return df
 #classtype=df.loc[sid][0]
@@ -242,7 +251,7 @@ def main():
                     row_dict=dict(zip(snrt_frmt,row))
                     row_dict['timestamp']=time_to_ts(row_dict['timestamp'])
                     try: 
-                        cls=sid_class.loc[row_dict['sig_id']][0]
+                        cls=sid_class.loc[sid_class['sig_id']==row_dict['sig_id']]['classtype'].iloc[0]
                     except Exception as e: 
                         error=str(e)+': sig_id found no classtype :coll_name='+coll_name+':sig_id='+row_dict['sig_id']+':i='+str(i)
                         myLogger.error(error)
@@ -256,7 +265,16 @@ def main():
                                             }
                                   }
                     else:
-                        pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
+                        if sid_class.loc[sid_class['sig_id']==row_dict['sig_id']]['from_client'].iloc[0]==False:
+                            pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['dst']},
+                                                  {'id_orig_p':int(row_dict['dstport'])},
+                                                  {'id_resp_h':row_dict['src']},
+                                                  {'id_resp_p':int(row_dict['srcport'])}
+                                                 ]  
+                                       }
+                            }
+                        else:
+                            pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
                                                   {'id_orig_p':int(row_dict['srcport'])},
                                                   {'id_resp_h':row_dict['dst']},
                                                   {'id_resp_p':int(row_dict['dstport'])}
