@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 # -*- coding: utf-8 -*-
 """
 Created on Thu Mar 30 14:20:31 2017
@@ -173,19 +167,21 @@ def   classtypes():
                 cls=[s for s in ll if 'classtype' in s]
                 sid=[s for s in ll if 'sid:' in s]
                 flw=[s for s in ll if 'flow:' in s]
+                flw2='both'
                 if len(cls)>0:
                     cls1=cls[0].split(':')[1]
                 if len(sid)>0:
                     sid1=sid[0].split(':')[1]
                     if len(flw)>0:
                         flw1=flw[0].split(':')[1]
-                        if "from_server" in flw1:
-                            flw2=False
-                        else:
-                            flw2=True
-                #mdict[sid1]=cls1
+                        if 'from_server' in flw1 or 'to_client' in flw1:
+                            flw2='dst'
+                        if 'from_client' in flw1:
+                            flw2='src'
+                
                 r1=(sid1,cls1,flw2)
-                ltup.append(r1)
+                if len(sid)>0:
+                    ltup.append(r1)
           df=pd.DataFrame(ltup,columns=['sig_id','classtype','from_client'])
           df.to_csv("sid_classtype.csv")
           return df
@@ -203,7 +199,7 @@ def   classtypes():
 
 
 def main():
-    classtypes()
+    
 #   opts, args = getopt.getopt(sys.argv[1:],"h:t:")
 #    for opt, arg in opts:
 #        if opt in ("-h"):
@@ -236,27 +232,31 @@ def main():
         i=0
         old_i=0
         
-        sid_class=classtypes()
-        
-        with open(home_dir+pcap_dir +'\\alert.csv','r') as alrt_f:
+        fdir=home_dir+pcap_dir
+        sid_class=pd.read_csv(home_dir+'sid_classtype.csv')      
+        with open(fdir +'\\alert.csv','r') as alrt_f:
             
                 reader = csv.reader(alrt_f)
                 for row in reader:
                     i+=1
+                    len_t_docs=-1
+                    len_t_docs_bth=-1
                     if i-old_i>2000:
                         old_i=i
                         time.sleep(20)
-                        slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':'+' file='+alrt_f+':i='+str(i)
+                        slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':'+' file='+fdir +'\\alert.csv'+':i='+str(i)
                         myLogger.error(slp_msg)
                     row_dict=dict(zip(snrt_frmt,row))
                     row_dict['timestamp']=time_to_ts(row_dict['timestamp'])
                     try: 
-                        cls=sid_class.loc[sid_class['sig_id']==row_dict['sig_id']]['classtype'].iloc[0]
+                        cls=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['classtype'].iloc[0]
                     except Exception as e: 
                         error=str(e)+': sig_id found no classtype :coll_name='+coll_name+':sig_id='+row_dict['sig_id']+':i='+str(i)
                         myLogger.error(error)
                         cls=' '
                         exit
+                    
+                    frm_clnt=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['from_client'].iloc[0]
                     
                     if row_dict['proto']=='ICMP':
                         pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
@@ -265,7 +265,7 @@ def main():
                                             }
                                   }
                     else:
-                        if sid_class.loc[sid_class['sig_id']==row_dict['sig_id']]['from_client'].iloc[0]==False:
+                        if frm_clnt=='dst':
                             pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['dst']},
                                                   {'id_orig_p':int(row_dict['dstport'])},
                                                   {'id_resp_h':row_dict['src']},
@@ -286,7 +286,7 @@ def main():
                                                     { '$or':[
                                                         { '$eq': ['$ts',row_dict['timestamp']]},
                                                         { '$and' : [
-                                                                      { '$gte': [  {'$add': ['$ts', '$duration']},row_dict['timestamp'] ]},
+                                                                      { '$gte': [  {'$add': ['$ts', '$duration',1]},row_dict['timestamp'] ]},
                                                                       { '$lte':['$ts',row_dict['timestamp']] }
                                                                    ] 
                                                         }
@@ -298,19 +298,32 @@ def main():
                     
                     pipeline = [ pip_mtc,pip_add_flds,pip_mtc2    ]
                     t_docs=collection_pcap.aggregate(pipeline)
-                    #Pdb().set_trace()
+                    
                     cursorlist = [c for c in t_docs]
                     len_t_docs= len(cursorlist)
-                    if len_t_docs==0:
-                        msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+': i= '+str(i)
-                        myLogger.error(msg)
-                        exit
+                    if len_t_docs==0 and  frm_clnt =='both':
+                            pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['dst']},
+                                                  {'id_orig_p':int(row_dict['dstport'])},
+                                                  {'id_resp_h':row_dict['src']},
+                                                  {'id_resp_p':int(row_dict['srcport'])}
+                                                 ]  
+                                       }
+                            }
+                            pipeline = [ pip_mtc,pip_add_flds,pip_mtc2    ]
+                            t_docs_bth=collection_pcap.aggregate(pipeline)
+                            cursorlist_bth = [c for c in t_docs_bth]
+                            len_t_docs_bth= len(cursorlist_bth)
+                    
+                    if len_t_docs==0 and len_t_docs_bth==0:
+                            msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
+                            myLogger.error(msg)
+                            exit
+                                
                     else:                         
                         for doc in cursorlist:
                             doc.keys()
                             if 'attack' not in doc.keys():
-                                #doc.setdefault('attack',[])
-                                #doc[attack].append({})
+                                
                                 collection_pcap.update_one({'_id':doc['_id']},{'$set':
                                                                         {'attack':{ 'details':[{'sig_id':row_dict['sig_id'],
                                                                                                 'sig_rev':row_dict['sig_rev'],
@@ -338,54 +351,12 @@ def main():
                                 
                                 
                             
-                
+                print('finished')
                 exit
-                break
+                
     
                 
-                if i-old_i>2000:
-                    old_i=i
-                    time.sleep(20)
-                    slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+'conn'+':i='+str(i)
-                    myLogger.error(slp_msg)
-                mongo_json(ln)
-                if 'service' in ln.keys():
-                    for svc in ln['service'].split(','):
-                        if svc not in collections.keys():
-                            try:
-                            #if svc in service_log_files.keys():
-                                fnm=service_log_files[svc]
-                            except Exception as e:
-                                error=str(e)+':svc='+str(svc)+':pcap_dir='+pcap_dir+':index='+str(i)
-                                myLogger.error(error)
-                                continue
-                            if type(fnm)==list:
-                                for sfnm in fnm:
-                                    colt=load_service(home_dir,sfnm,pcap_dir,svc,True)
-                                    collections[svc]=colt
-                            else:
-                                colt=load_service(home_dir,fnm,pcap_dir,svc,False)
-                                collections[svc]=colt
-                                
-                        colt=collections[svc]
-                        for doc in colt.find({'uid':ln['uid'],'service':svc}):
-                            if not doc==None:
-                                if svc in service_log_files:
-                                    #    collection.update({'_id':doc['_id']},{'$addToSet':{svc:ln}})
-                                    colt.update_one({'_id':doc['_id']},{'$set':{'match':1}})
-                                    if not svc in ln.keys():
-                                        ln.setdefault(svc,[])
-                                    ln[svc].append(doc['_id'])
-                
-                try:
-                    collection_pcap.insert_one(ln)
-                except Exception as e:
-                    error=str(e)+':cn='+str(ln)+':index='+str(i)
-                    myLogger.error(error)
-                    exit
-                    
-        prcs_file.write("\n"+pcap_dir)
-        prcs_file.flush()
+           
    
 #    conn_data[0].keys()
 #    query=[ntlm_data[0]['id.orig_h'],ntlm_data[0]['id.orig_p'],ntlm_data[0]['id.resp_h'],ntlm_data[0]['id.resp_p']]
