@@ -67,7 +67,8 @@ def main():
             to_be_removed.append(f)
     for l in prcf_file.readlines():
         l=l.split("\n")[0]
-        to_be_removed.append(l)
+        if len(l)>1:
+            to_be_removed.append(l)
     
     
     for f in to_be_removed:

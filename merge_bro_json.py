@@ -173,7 +173,8 @@ def main():
     prcs_file= open('processed_merge_files.txt', 'r+')
     for l in prcs_file.readlines():
         l=l.split("\n")[0]
-        remove.append(l)
+        if len(l)>1:
+            remove.append(l)
     for r in remove:
         dl.remove(r)
 

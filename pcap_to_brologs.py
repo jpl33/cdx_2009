@@ -49,7 +49,8 @@ def main():
               
       for l in out_file.readlines():
         l=l.split("\n")[0]
-        to_be_removed.append(l)
+        if len(l)>1:
+            to_be_removed.append(l)
         
       for f in to_be_removed:
             print ("Not pcap so not processing %s"%f)

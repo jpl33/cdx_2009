@@ -206,20 +206,24 @@ def main():
 #           home_dir = arg
 #        elif opt in ("-t"):
 #           tp = arg
-    
+### scan home directory, find pcap directories, where the snort CSV files are located     
     dl=next(os.walk(home_dir))[1]
     dl.sort()
     remove=[]
     for d in dl:
         if ( not is_pcap_dir(d)):
             remove.append(d)
+            
+###   open 'processed_***_file.txt' add processed files to the 'remove' list            
     prcs_file= open('processed_snort_bro_merge.txt', 'r+')
     for l in prcs_file.readlines():
         l=l.split("\n")[0]
-        remove.append(l)
+        if len(l)>1:
+            remove.append(l)
     for r in remove:
         dl.remove(r)
-    
+
+###    take the pcap directory, and look up the matching <pcap_dir_conn> collection in mogo db
     for pcap_dir in dl:
         coll_name=pcap_dir+'_conn'
         try:
@@ -228,26 +232,36 @@ def main():
             error=str(e)+':coll_name='+coll_name
             myLogger.error(error)
             exit     
-        
+
+###    initialize sleep() counters        
         i=0
         old_i=0
         
         fdir=home_dir+pcap_dir
+###      load the snort sig_id<->classtype matching file
+###      allowing us to match 'classtype' to each sig_id in the snort file  
         sid_class=pd.read_csv(home_dir+'sid_classtype.csv')      
+        
         with open(fdir +'\\alert.csv','r') as alrt_f:
             
                 reader = csv.reader(alrt_f)
                 for row in reader:
                     i+=1
+###      initialize mongo db search results counter           
                     len_t_docs=-1
                     len_t_docs_bth=-1
+                    
+###      if we processed 2000 lines. sleep for 20 seconds, so the CPU can cool off...              
                     if i-old_i>2000:
                         old_i=i
                         time.sleep(20)
                         slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':'+' file='+fdir +'\\alert.csv'+':i='+str(i)
                         myLogger.error(slp_msg)
+###       zip snort headers to the current line in the snort alert file    
                     row_dict=dict(zip(snrt_frmt,row))
+###       process snort timestamp to UNIX timestamp, like it is in mongo DB             
                     row_dict['timestamp']=time_to_ts(row_dict['timestamp'])
+###       match snort classtype to the current alert sig_id             
                     try: 
                         cls=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['classtype'].iloc[0]
                     except Exception as e: 
@@ -256,14 +270,26 @@ def main():
                         cls=' '
                         exit
                     
+###        finding the current sig_id flow direction from the sig_id<->classtype file            
                     frm_clnt=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['from_client'].iloc[0]
                     
+###         'pip_mtc' is the mongo db lookup for a
+###            {id_orig_h,id_orig_p,id_resp_h,id_resp_p} tuple.
+###           we are looking for tcp flows matching this tuple.
+###         if the snort alert protocol is 'icmp' thre wil be no TCP ports and we will search
+###          for the matching flow  accordig to IP addresses only           
                     if row_dict['proto']=='ICMP':
                         pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
                                                   {'id_resp_h':row_dict['dst']},
                                                   {'proto':'icmp'}]  
                                             }
                                   }
+###         else, if the snort alert is TCP/UDP we will search according to ip addresses,
+###         and  TCP ports. assignment of snort src/dest to mnogo db search is according to
+###         the sig_id<->classtype flow direction.If frm_clnt=='dst', the alert is generated 
+###         FROM the server TO the client. since mongo DB (bro) captures according to tcp
+###         flow, we need to reverse the fields from the snort alert to find the correct
+###          mongo db document.     
                     else:
                         if frm_clnt=='dst':
                             pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['dst']},
@@ -273,6 +299,8 @@ def main():
                                                  ]  
                                        }
                             }
+###         If frm_clnt=='src' or 'both' we will assume the snort alert was generated from 
+###          client to server, and search mongo db according to the snort 'src'/'dst' fields.                         
                         else:
                             pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['src']},
                                                   {'id_orig_p':int(row_dict['srcport'])},
@@ -281,12 +309,17 @@ def main():
                                                  ]  
                                        }
                             }
-                    
+###          'pip_add_flds' is a lookup  for a timestamp. for simple tcp flows,snort alerts 
+###          can happen on the same time as the flow time stamp.this is the $eq' condition below.
+###           for complex tcp flows, snort alert can happpen during the flow, and must statisfy
+###          two conditions: 1. tcp flow timestamp is LESS than the alert timestamp
+###                          2. tcp flow ts +duration is greater than, or equal to, the snort alert timestamp   
+###                             
                     pip_add_flds={ '$addFields': { 'time_rt':
                                                     { '$or':[
                                                         { '$eq': ['$ts',row_dict['timestamp']]},
                                                         { '$and' : [
-                                                                      { '$gte': [  {'$add': ['$ts', '$duration',1]},row_dict['timestamp'] ]},
+                                                                      { '$gte': [  {'$add': ['$ts', '$duration',0.01]},row_dict['timestamp'] ]},
                                                                       { '$lte':['$ts',row_dict['timestamp']] }
                                                                    ] 
                                                         }
@@ -298,9 +331,11 @@ def main():
                     
                     pipeline = [ pip_mtc,pip_add_flds,pip_mtc2    ]
                     t_docs=collection_pcap.aggregate(pipeline)
-                    
+###         a hack for checking how many documents we retrieved BEFORE iterating over them.                           
                     cursorlist = [c for c in t_docs]
                     len_t_docs= len(cursorlist)
+###          if we didn't find any documents, maybe the snort alert was generated from the server
+###          to the client and we need to reverse 'src'/'dst' fields          
                     if len_t_docs==0 and  frm_clnt =='both':
                             pip_mtc={'$match': { '$and': [{'id_orig_h':row_dict['dst']},
                                                   {'id_orig_p':int(row_dict['dstport'])},
@@ -322,6 +357,7 @@ def main():
                     else:                         
                         for doc in cursorlist:
                             doc.keys()
+###          we can have several snort alerts for a single tcp flow. did we have an alert for this flow already?                                 
                             if 'attack' not in doc.keys():
                                 
                                 collection_pcap.update_one({'_id':doc['_id']},{'$set':
@@ -333,8 +369,10 @@ def main():
                                                                          }
                                                                       }
                                                              )
-                                #print(doc)
+                                if 'service' in doc.keys():
+                                    #print(doc)
                                 break
+###            we already have some alerts for this flow, so add this current one to the 'attack' array
                             else:
                                 collection_pcap.update_one({'_id':doc['_id']},{'$push':
                                                                         {'attack.details':{ 'sig_id':row_dict['sig_id'],
@@ -350,9 +388,11 @@ def main():
                                                                                 })
                                 
                                 
-                            
-                print('finished')
-                exit
+###             end of the alert file loop                            
+                fin_msg='finished processing file '+fdir +'\\alert.csv'
+                myLogger.error(fin_msg)
+                prcs_file.write("\n"+pcap_dir)
+                prcs_file.flush()
                 
     
                 
