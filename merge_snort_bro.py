@@ -231,7 +231,7 @@ def main():
         except Exception as e: 
             error=str(e)+':coll_name='+coll_name
             myLogger.error(error)
-            exit     
+            sys.exit()     
 
 ###    initialize sleep() counters        
         i=0
@@ -268,7 +268,7 @@ def main():
                         error=str(e)+': sig_id found no classtype :coll_name='+coll_name+':sig_id='+row_dict['sig_id']+':i='+str(i)
                         myLogger.error(error)
                         cls=' '
-                        exit
+                        sys.exit()
                     
 ###        finding the current sig_id flow direction from the sig_id<->classtype file            
                     frm_clnt=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['from_client'].iloc[0]
@@ -352,11 +352,11 @@ def main():
                     if len_t_docs==0 and len_t_docs_bth==0:
                             msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
                             myLogger.error(msg)
-                            exit
+                            sys.exit()
                                 
                     else:                         
                         for doc in cursorlist:
-                            doc.keys()
+                            
 ###          we can have several snort alerts for a single tcp flow. did we have an alert for this flow already?                                 
                             if 'attack' not in doc.keys():
                                 
@@ -369,9 +369,51 @@ def main():
                                                                          }
                                                                       }
                                                              )
+                                
                                 if 'service' in doc.keys():
-                                    #print(doc)
-                                break
+                                    srvc=doc['service']
+                                    if not srvc in doc.keys():
+                                        continue
+                                    id_lst=doc[srvc]
+                                    srvc_coll_nm=pcap_dir+'_'+srvc
+                                    try:
+                                        srvc_coll=get_db().get_collection(srvc_coll_nm)
+                                    except Exception as e: 
+                                        error=str(e)+':coll_name='+srvc_coll_nm
+                                        myLogger.error(error)
+                                        sys.exit()
+                                    query = [
+                                            # {'$match': {'_id': {'$in': id_lst}}},
+                                             #{'$addFields': {'__order': {'$indexOfArray': [id_lst, '$_id' ]}}},
+                                             #{'$sort': {'__order': 1}}
+                                               {'$match': {'_id': {'$in': id_lst}}},
+                                               {'$sort': {'ts': 1}}
+                                               ]
+                                    c_docs= srvc_coll.aggregate(query)
+                                    cursorlist_c = [c for c in c_docs]
+                                    len_c_docs= len(cursorlist_c)
+                                    if len_c_docs==0 :
+                                        msg='snort alert fond no application match: collection: '+srvc_coll_nm+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
+                                        myLogger.error(msg)
+                                        sys.exit()
+                                
+                                    else:                         
+                                        docs_ts =[dp for dp in cursorlist_c if dp['ts']<=row_dict['timestamp']]
+                                        from operator import attrgetter 
+                                        docs_ts = sorted(docs_ts,key=attrgetter('ts'))
+                                        for dt in docs_ts:
+###          we can have several snort alerts for a single tcp flow. did we have an alert for this flow already?                                 
+                                            if 'attack' not in dt.keys():
+                                                srvc_coll.update_one({'_id':dt['_id']},{'$set':
+                                                                            {'attack':{ 'details':[{'sig_id':row_dict['sig_id'],
+                                                                                                    'sig_rev':row_dict['sig_rev'],
+                                                                                                    'msg':row_dict['msg'],
+                                                                                                    'classtype':cls
+                                                                                                   }],'count':1}
+                                                                             }
+                                                                          }
+                                                                 )
+                                
 ###            we already have some alerts for this flow, so add this current one to the 'attack' array
                             else:
                                 collection_pcap.update_one({'_id':doc['_id']},{'$push':
