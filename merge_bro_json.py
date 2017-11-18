@@ -126,42 +126,48 @@ def  load_service(home_dir,file,pcap_dir,service,lst_flag):
      old_i=0
      file=home_dir+pcap_dir+'//'+file
      
-     with open(file,'r') as srvc_f:
-        for line in srvc_f:
-            ln=json.loads(line)
-            ln['service']=service
-            mongo_json(ln)
-            i+=1
-            if i-old_i>10000:
-                old_i=i
-                time.sleep(20)
-                slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+service+':i='+str(i)
-                myLogger.error(slp_msg)
+     try:
+         srvc_f=open(file,'r')
+     except Exception as e:
+         error=str(e)+':svc='+str(service)+':pcap_dir='+pcap_dir
+         myLogger.error(error)
+         return False
+         
+     for line in srvc_f:
+         ln=json.loads(line)
+         ln['service']=service
+         mongo_json(ln)
+         i+=1
+         if i-old_i>10000:
+             old_i=i
+             time.sleep(20)
+             slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+service+':i='+str(i)
+             myLogger.error(slp_msg)
 
-            ln['match']=0
-            if service=='http':
-                if 'uri' in ln.keys():
-                    ln['uri_length']=len(ln['uri'])
-                else:
-                    ln['uri_length']=0
-            try:
-                colt.insert_one(ln)
-            except Exception as e:
-                if not service=='dns':
-                    error=str(e)+':svc='+str(ln)+':service='+service+':index='+str(i)
-                    myLogger.error(error)
-                    exit
+         ln['match']=0
+         if service=='http':
+             if 'uri' in ln.keys():
+                 ln['uri_length']=len(ln['uri'])
+             else:
+                 ln['uri_length']=0
+         try:
+             colt.insert_one(ln)
+         except Exception as e:
+             if not service=='dns':
+                 error=str(e)+':svc='+str(ln)+':service='+service+':index='+str(i)
+                 myLogger.error(error)
+                 exit
      return colt
             
 
 def main():
     
-    opts, args = getopt.getopt(sys.argv[1:],"h:t:")
-    for opt, arg in opts:
-        if opt in ("-h"):
-           home_dir = arg
-        elif opt in ("-t"):
-           tp = arg
+#    opts, args = getopt.getopt(sys.argv[1:],"h:t:")
+#    for opt, arg in opts:
+#        if opt in ("-h"):
+#           home_dir = arg
+#        elif opt in ("-t"):
+#           tp = arg
     
     
     dl=next(os.walk(home_dir))[1]
@@ -188,12 +194,13 @@ def main():
         if not coll_name in get_db().collection_names():
             collection_pcap=pymongo.collection.Collection(get_db(),coll_name,create=True)
             coll_count=0
-            collections={}
+            
         else:
             collection_pcap=get_db().get_collection(coll_name)
             coll_count=get_db().get_collection(coll_name).count()
             col_lst=get_db().collection_names() 
-            
+        
+        collections={}    
         result = db[collection_pcap.name].create_index(collection_filters['conn'])
         
         i=0
@@ -227,7 +234,11 @@ def main():
                                 colt=load_service(home_dir,fnm,pcap_dir,svc,False)
                                 collections[svc]=colt
                                 
-                        colt=collections[svc]
+                                
+                        if collections[svc] != False:
+                            colt=collections[svc]
+                        else:
+                            continue
                         for doc in colt.find({'uid':ln['uid'],'service':svc}):
                             if not doc==None:
                                 if svc in service_log_files:
@@ -300,33 +311,3 @@ main()
 #'%.2f' % line1['ts']
 #'ntlm' in str(line1['service'].values[0]).split(',')
 
-<<<<<<< HEAD
-=======
-#        transform unix timestamp to date_time, and backwards
-#import datetime
-#print(
-#    datetime.datetime.fromtimestamp(
-#        float('%.2f'% line1['ts'])
-#    ).strftime('%Y-%m-%d %H:%M:%S.%f')
-#)
-#    
-#d = datetime.date(2015,1,5)
-
-#unixtime = time.mktime(d.timetuple())
->>>>>>> ef411919f919c422455560801715744c8d68f7f6
-
-#        iterate on a directory files, filtering for json files
-#    for d in itertools.islice(dl,0,3):
-#        ddl=next(os.walk(home_dir+'\\'+d))[2]
-#        ddl.sort(reverse=True)
-#        remove=[]
-#        for fnm in ddl:
-#            ff=fnm.split('.')
-#            if len(ff)>=2:
-#                if not ff[1] in 'json':
-#                    remove.append(fnm)
-#            else:
-#                remove.append(fnm)
-#        for r in remove:
-#            ddl.remove(r)
-#        print(ddl)

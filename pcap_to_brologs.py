@@ -58,31 +58,7 @@ def main():
 	
       num_pcap_files = len(pcap_file_list)
       pcap_file_dict = {}
-<<<<<<< HEAD
-=======
-      #for i in range(0,num_pcap_files):
-		# if is_pcap(pcap_file_list[i]):j
-			
-			# # Get created time for this file and the next in the ring buffer
-			# f1_created = datetime.datetime.fromtimestamp(os.path.getctime(pcap_dir + "/" + pcap_file_list[i]))
-			# f2_created = datetime.datetime.fromtimestamp(os.path.getctime(pcap_dir + "/" + pcap_file_list[(i+1) % num_pcap_files]))
-			
-			# dirname = f1_created.isoformat() + "-" + pcap_file_list[i]
-			
-			# # Check to see if we've already processed this file and make sure that the ctime is less than the next in the ring buffer
-			# if dirname in processed_files:
-				# print "skipping since already processed %s"%dirname
-				# continue
 
-			# # uncomment the next lines if you are expecting more PCAP files to be generated in the pcap_dir directiry
-			
-			# #if f1_created < f2_created:
-                  #pcap_file_dict[pcap_file_list[i]]
-			# #else:
-			# #	print "skipping due to time %s"%dirname
-		# else:
-			# print "more pcap check. skipping %f"%pcap_file_list[i]
->>>>>>> ef411919f919c422455560801715744c8d68f7f6
 		
 	#print pcap_file_dict
       print ("NUMBER OF FILES TO PROCESS")
@@ -108,11 +84,10 @@ def main():
             #os.makedirs(bro_data_dir + "/" + output_dirname)
             bro_cwd = pcap_dir + "/" + output_dirname
             bro_env = { "BROPATH": "/opt/bro/share/bro:/opt/bro/share/bro/site:/opt/bro/share/bro/policy:/opt/bro/share/securityonion"}
-<<<<<<< HEAD
+
             bro_cmd = "/opt/bro/bin/bro -r %s/%s local.bro" %(pcap_dir, f1)
-=======
-            bro_cmd = "/opt/bro/bin/bro -y -r %s/%s local.bro" %(pcap_dir, f1)
->>>>>>> ef411919f919c422455560801715744c8d68f7f6
+
+            #bro_cmd = "/opt/bro/bin/bro -y -r %s/%s local.bro" %(pcap_dir, f1)
             bc=bro_cmd.split()
 		
             print ("running bro on %s ..." % f1)

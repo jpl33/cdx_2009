@@ -188,6 +188,11 @@ def   classtypes():
 #classtype=df.loc[sid][0]
           
 
+def  remove_collections_attacks(prefix):
+     col_lst=get_db().collection_names() 
+     for col in col_lst:
+         if col.startswith(prefix):
+             get_db().get_collection(col).update_many({},{'$unset':{'attack':""}})
 
 
     
@@ -349,12 +354,17 @@ def main():
                             cursorlist_bth = [c for c in t_docs_bth]
                             len_t_docs_bth= len(cursorlist_bth)
                     
-                    if len_t_docs==0 and len_t_docs_bth==0:
+                    if len_t_docs==0 and len_t_docs_bth<1:
                             msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
                             myLogger.error(msg)
                             sys.exit()
                                 
                     else:                         
+                        if len_t_docs==0:
+                            cursorlist=cursorlist_bth
+                            msg='switched tcp directions: collection: '+coll_name+':sid='+row_dict['sig_id']+': i= '+str(i)
+                            myLogger.error(msg)
+                            
                         for doc in cursorlist:
                             
 ###          we can have several snort alerts for a single tcp flow. did we have an alert for this flow already?                                 
@@ -370,7 +380,20 @@ def main():
                                                                       }
                                                              )
                                 
-                                if 'service' in doc.keys():
+                            else:
+                                collection_pcap.update_one({'_id':doc['_id']},{'$push':
+                                                                                            {'attack.details':{ 'sig_id':row_dict['sig_id'],
+                                                                                                                    'sig_rev':row_dict['sig_rev'],
+                                                                                                                    'msg':row_dict['msg'],
+                                                                                                                    'classtype':cls
+                                                                                                                    }
+                                                                                             }
+                                                                                          }
+                                                                     )
+                                collection_pcap.update_one({'_id':doc['_id']},{'$set':
+                                                                                            {'attack.count':doc['attack']['count']+1}
+                                                                                                    })
+                            if 'service' in doc.keys():
                                     srvc=doc['service']
                                     if not srvc in doc.keys():
                                         continue
@@ -393,41 +416,44 @@ def main():
                                     cursorlist_c = [c for c in c_docs]
                                     len_c_docs= len(cursorlist_c)
                                     if len_c_docs==0 :
-                                        msg='snort alert fond no application match: collection: '+srvc_coll_nm+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
+                                        msg='snort alert fuond no application match: collection: '+srvc_coll_nm+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
                                         myLogger.error(msg)
                                         sys.exit()
                                 
                                     else:                         
                                         docs_ts =[dp for dp in cursorlist_c if dp['ts']<=row_dict['timestamp']]
-                                        from operator import attrgetter 
-                                        docs_ts = sorted(docs_ts,key=attrgetter('ts'))
+                                        from operator import itemgetter 
+                                        docs_ts = sorted(docs_ts,key=itemgetter('ts'), reverse=True)
                                         for dt in docs_ts:
 ###          we can have several snort alerts for a single tcp flow. did we have an alert for this flow already?                                 
-                                            if 'attack' not in dt.keys():
-                                                srvc_coll.update_one({'_id':dt['_id']},{'$set':
-                                                                            {'attack':{ 'details':[{'sig_id':row_dict['sig_id'],
-                                                                                                    'sig_rev':row_dict['sig_rev'],
-                                                                                                    'msg':row_dict['msg'],
-                                                                                                    'classtype':cls
-                                                                                                   }],'count':1}
-                                                                             }
-                                                                          }
-                                                                 )
-                                
+                                            if dt['ts']==docs_ts[0]['ts']:
+                                                if 'attack' not in dt.keys():
+                                                    srvc_coll.update_one({'_id':dt['_id']},{'$set':
+                                                                                {'attack':{ 'details':[{'sig_id':row_dict['sig_id'],
+                                                                                                        'sig_rev':row_dict['sig_rev'],
+                                                                                                        'msg':row_dict['msg'],
+                                                                                                        'classtype':cls
+                                                                                                       }],'count':1}
+                                                                                 }
+                                                                              }
+                                                                     )
+                                    
 ###            we already have some alerts for this flow, so add this current one to the 'attack' array
-                            else:
-                                collection_pcap.update_one({'_id':doc['_id']},{'$push':
-                                                                        {'attack.details':{ 'sig_id':row_dict['sig_id'],
-                                                                                                'sig_rev':row_dict['sig_rev'],
-                                                                                                'msg':row_dict['msg'],
-                                                                                                'classtype':cls
-                                                                                                }
-                                                                         }
-                                                                      }
-                                                 )
-                                collection_pcap.update_one({'_id':doc['_id']},{'$set':
-                                                                        {'attack.count':doc['attack']['count']+1}
-                                                                                })
+                                                else:
+                                                    srvc_coll.update_one({'_id':dt['_id']},{'$push':
+                                                                                            {'attack.details':{ 'sig_id':row_dict['sig_id'],
+                                                                                                                    'sig_rev':row_dict['sig_rev'],
+                                                                                                                    'msg':row_dict['msg'],
+                                                                                                                    'classtype':cls
+                                                                                                                    }
+                                                                                             }
+                                                                                          }
+                                                                     )
+                                                    srvc_coll.update_one({'_id':dt['_id']},{'$set':
+                                                                                            {'attack.count':dt['attack']['count']+1}
+                                                                                                    })
+                        
+                            
                                 
                                 
 ###             end of the alert file loop                            
