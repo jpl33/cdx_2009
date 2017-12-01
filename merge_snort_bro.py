@@ -195,8 +195,13 @@ def  remove_collections_attacks(prefix):
              get_db().get_collection(col).update_many({},{'$unset':{'attack':""}})
 
 
-    
-    
+def set_attack_bool(prefix):    
+    col_lst=get_db().collection_names() 
+    for col in col_lst:
+        if col.startswith(prefix):
+            get_db().get_collection(col).update_many({'attack':{'$exists':True}},{'$set':{'attack_bool':True}})
+            get_db().get_collection(col).update_many({'attack':{'$exists':False}},{'$set':{'attack_bool':False}})
+ 
 
 
 
@@ -273,7 +278,8 @@ def main():
                         error=str(e)+': sig_id found no classtype :coll_name='+coll_name+':sig_id='+row_dict['sig_id']+':i='+str(i)
                         myLogger.error(error)
                         cls=' '
-                        sys.exit()
+                        continue
+                        #sys.exit()
                     
 ###        finding the current sig_id flow direction from the sig_id<->classtype file            
                     frm_clnt=sid_class.loc[sid_class['sig_id']==int(row_dict['sig_id'])]['from_client'].iloc[0]
@@ -355,7 +361,7 @@ def main():
                             len_t_docs_bth= len(cursorlist_bth)
                     
                     if len_t_docs==0 and len_t_docs_bth<1:
-                            msg='snort alert fond no match: collection: '+coll_name+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
+                            msg='snort alert found no match: collection: '+coll_name+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
                             myLogger.error(msg)
                             sys.exit()
                                 
@@ -416,7 +422,7 @@ def main():
                                     cursorlist_c = [c for c in c_docs]
                                     len_c_docs= len(cursorlist_c)
                                     if len_c_docs==0 :
-                                        msg='snort alert fuond no application match: collection: '+srvc_coll_nm+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
+                                        msg='snort alert found no application match: collection: '+srvc_coll_nm+': directory= '+pcap_dir+':sid='+row_dict['sig_id']+': i= '+str(i)
                                         myLogger.error(msg)
                                         sys.exit()
                                 

@@ -49,6 +49,14 @@ remainder=finish%interval_size
 df_collection = {}
 df_feature_cols=['duration','orig_ip_bytes','resp_ip_bytes','orig_pkts','resp_pkts']
 
+dd=df[:10]
+ddkl=[]
+for d3 in dd['attack']:    
+    if d3.isnull():
+        ddkl.append(0)
+    else:    
+        ddkl.append(dict(d3)['count'])
+
 
 # In[ ]:
 
@@ -62,9 +70,15 @@ for index in range(intervals):
     srv_cnt= df['service'].value_counts()
     srv_dict={}
     srv_dfs={}
-    for nm in srv_cnt:    
+    for nm in srv_cnt:
+###     the service name is the index of 'srv_cnt', 
+###     here we are actually creating a dictionary of services
+###        and their counts in the  current sample - 'srv_dict'
         srv_dict[srv_cnt[srv_cnt==nm].index[0]]=nm
+###     if the service connections are more than 20% of all connections in the current sample
+###     slice the current sample according to service  
         if nm/df_cnt>0.2:
+            
             d1=df[df.service==srv_cnt[srv_cnt==nm].index[0]]
             srv_dfs[srv_cnt[srv_cnt==nm].index[0]]=d1[df_feature_cols]
         #print(nm)
