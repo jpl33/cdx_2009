@@ -73,7 +73,7 @@ time_interval=180
 intervals=round(finish/interval_size)
 remainder=finish%interval_size
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts']
+df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','attack_bool']
 
 #dd=df[:10]
 #ddkl=[]
@@ -87,7 +87,7 @@ df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts']
 # In[ ]:
 from IPython.core.debugger import Pdb; 
     #time.sleep(30)
-doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
+#doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
@@ -111,6 +111,9 @@ for index in range(intervals):
     mdd=df[df_feature_cols].median()
     sum_t=pd.concat([sum_t,pd.DataFrame(mdd).T])
     sum_t=sum_t.rename(index={0:'median'})
+    dcc=df[df['attack_bool']==True]
+    dcc=dcc.shape[0]  
+    sum_t.loc['count','attack_bool']=dcc
     df_dict=json.loads(sum_t.to_json())
     df_jsn=dict()
     df_jsn['conn']=df_dict
@@ -119,7 +122,7 @@ for index in range(intervals):
 ###     
 ###     if the service connections are more than 20% of all connections in the current sample
 ###     slice the current sample according to service  
-        if nm>100:
+        if nm>80:
             # # get the service name
             srv_nm=srv_cnt[srv_cnt==nm].index[0]
             
@@ -149,6 +152,9 @@ for index in range(intervals):
                 mdd=srv_dfs[ssrv].median()
                 sum_t=pd.concat([st,pd.DataFrame(mdd).T])
                 sum_t=sum_t.rename(index={0:'median'})
+                dcc=d1[d1['attack_bool']==True]
+                dcc=dcc.shape[0]  
+                sum_t.loc['count','attack_bool']=dcc
                 srv_dfs[ssrv]=sum_t.to_json()
                 srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
                 coll_srv_df=pd.DataFrame(list(srv_doc_tt))
@@ -164,10 +170,10 @@ for index in range(intervals):
     # #  increment the timestamp
     first_ts=first_ts+time_interval
     df_jsn['real']=srv_dict
-    bin_entr=dict()
-    bin_entr[str(index)]=df_jsn
+    df_jsn['index']=index
+    
     try:
-        collection_bins.insert_one(bin_entr)
+        collection_bins.insert_one(df_jsn)
         #collection_bins.insert_one(ddjn2)
 
     except Exception as e:
