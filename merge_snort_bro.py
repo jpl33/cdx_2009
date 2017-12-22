@@ -102,48 +102,7 @@ def  is_pcap_dir(file_name):
     else:
         return False
         
-def  load_service(home_dir,file,pcap_dir,service,lst_flag):
-     # 'file' is the full-path file name of the json file
-     # 'service' is the BRO service name: 'dns','http','krb_tcp'
-     if lst_flag==True:
-         if pcap_dir+'_'+service in db.collection_names():
-             colt=db[pcap_dir+'_'+service]
-         else:   
-             colt=pymongo.collection.Collection(db,pcap_dir+'_'+service,create=True)
-     else:   
-         colt=pymongo.collection.Collection(db,pcap_dir+'_'+service,create=True)
-     
-     
-     i=0
-     old_i=0
-     file=home_dir+pcap_dir+'//'+file
-     
-     with open(file,'r') as srvc_f:
-        for line in srvc_f:
-            ln=json.loads(line)
-            ln['service']=service
-            mongo_json(ln)
-            i+=1
-            if i-old_i>10000:
-                old_i=i
-                time.sleep(20)
-                slp_msg='sleeping now'+':pcap_dir='+pcap_dir+':svc='+service+':i='+str(i)
-                myLogger.error(slp_msg)
 
-            ln['match']=0
-            if service=='http':
-                if 'uri' in ln.keys():
-                    ln['uri_length']=len(ln['uri'])
-                else:
-                    ln['uri_length']=0
-            try:
-                colt.insert_one(ln)
-            except Exception as e:
-                if not service=='dns':
-                    error=str(e)+':svc='+str(ln)+':service='+service+':index='+str(i)
-                    myLogger.error(error)
-                    exit
-     return colt
             
 def   time_to_ts(row_ts):  
       strd=row_ts[:-2]
@@ -248,6 +207,7 @@ def main():
         old_i=0
         
         fdir=home_dir+pcap_dir
+        
 ###      load the snort sig_id<->classtype matching file
 ###      allowing us to match 'classtype' to each sig_id in the snort file  
         sid_class=pd.read_csv(home_dir+'sid_classtype.csv')      
@@ -462,7 +422,8 @@ def main():
                             
                                 
                                 
-###             end of the alert file loop                            
+###             end of the alert file loop 
+                set_attack_bool(pcap_dir)
                 fin_msg='finished processing file '+fdir +'\\alert.csv'
                 myLogger.error(fin_msg)
                 prcs_file.write("\n"+pcap_dir)

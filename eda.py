@@ -167,6 +167,10 @@ for index in range(intervals):
         ddjn=json.loads(srv_dfs[dd])
         df_jsn[dd]=ddjn
     
+    
+    df_jsn['first_ts']=first_ts
+    df_jsn['last_ts']=first_ts+time_interval
+    df_jsn['pcap_dir']=pcap_dir
     # #  increment the timestamp
     first_ts=first_ts+time_interval
     df_jsn['real']=srv_dict
@@ -183,8 +187,7 @@ for index in range(intervals):
 
 
 
-with open('result.json', 'w') as fp:
-    json.dump(df_collection, fp, cls=JSONEncoder)
+
 
 #json.load(open('result.json')
 ###You will get a dictionary with your dataframes. You can load them using
