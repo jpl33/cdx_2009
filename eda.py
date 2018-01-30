@@ -1,17 +1,17 @@
 
 # coding: utf-8
 
-# In[2]:
 
 
 # -*- coding: utf-8 -*-
 import pandas as pd
-
+import math
 import numpy as np
 import json
 import pymongo
 import sys
 import os
+
 #import csv
 #import io
 #import re
@@ -57,21 +57,27 @@ def  set_collections_index(prefix):
          if col.startswith(prefix):
              get_db()[col].create_index(collection_filters['conn'])
 
-
+def  base_conn_stats(df):
+     s1=df[df_feature_cols].describe()
+     sum_t=pd.DataFrame(s1)
+     mdd=df[df_feature_cols].median()
+     sum_t=pd.concat([sum_t,pd.DataFrame(mdd).T])
+     sum_t=sum_t.rename(index={0:'median'})
+     dcc=df[df['attack_bool']==True]
+     dcc=dcc.shape[0]  
+     sum_t.loc['count','attack_bool']=dcc
+     return sum_t
     
 #home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00000'
-i=1
-inter=0
+pcap_dir= 'maccdc2012_00005'
+
 client = pymongo.MongoClient('localhost')
 db = client['local']
 collection_pcap = get_db()[pcap_dir+'_conn']
 collection_bins= get_db()['bins']
 finish=collection_pcap.count()
-interval_size=100
 time_interval=180
-intervals=round(finish/interval_size)
-remainder=finish%interval_size
+#intervals=round(finish/interval_size)
 df_collection = {}
 df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','attack_bool']
 
@@ -92,6 +98,12 @@ from IPython.core.debugger import Pdb;
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
 for dd in first_doc: first_ts=dd['ts']
+# # find last timestamp
+last_doc= collection_pcap.find(sort=[('ts',-1)],limit=1)
+# # we received a collection of ONE,but we only care about the first timestamp
+for dd in last_doc: last_ts=dd['ts']
+
+intervals=math.ceil((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
     
@@ -116,7 +128,11 @@ for index in range(intervals):
     sum_t.loc['count','attack_bool']=dcc
     df_dict=json.loads(sum_t.to_json())
     df_jsn=dict()
+    df_attk=dict()
     df_jsn['conn']=df_dict
+    df_atk_cn=df[df.attack_bool==True]
+    df_atk_cn_jsn=base_conn_stats(df_atk_cn)
+    df_attk['conn']=json.loads(df_atk_cn_jsn.to_json())
     
     for nm in srv_cnt:
 ###     
@@ -155,7 +171,10 @@ for index in range(intervals):
                 dcc=d1[d1['attack_bool']==True]
                 dcc=dcc.shape[0]  
                 sum_t.loc['count','attack_bool']=dcc
+                srv_atk=srv_dfs[ssrv][srv_dfs[ssrv].attack_bool==True]
                 srv_dfs[ssrv]=sum_t.to_json()
+                srv_atk_jsn=base_conn_stats(srv_atk)
+                df_attk[ssrv]=json.loads(srv_atk_jsn.to_json())
                 srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
                 coll_srv_df=pd.DataFrame(list(srv_doc_tt))
                 coll_srv_count=coll_srv_df.shape[0]
@@ -175,13 +194,14 @@ for index in range(intervals):
     first_ts=first_ts+time_interval
     df_jsn['real']=srv_dict
     df_jsn['index']=index
+    df_jsn['attack']=df_attk
     
     try:
         collection_bins.insert_one(df_jsn)
         #collection_bins.insert_one(ddjn2)
 
     except Exception as e:
-            error=str(e)+':doc='+str(ddjn)+':index='+str(i)
+            error=str(e)+':doc='+str(df_jsn)+':index='+str(index)
             myLogger.error(error)
             exit
 
