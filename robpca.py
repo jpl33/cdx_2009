@@ -116,14 +116,14 @@ for index in range(intervals):
         df_clean.loc[hh-1,"mcd"]=1
     df_clean["attack_bool"]=True
     df_clean["attack_bool"][df["attack_bool"]==False]=False
-    fig=plt.figure()
+    fig=plt.figure(figsize=(14,10))
     #fig, axes = plt.subplots(1, 1, sharex=True, sharey=True)
     colors = {0: 'red', 1: 'aqua'}
     markers={1:"o",0:"p"}
    
     groups = df_clean.groupby('attack_bool')
 
-    fig, axes = plt.subplots(1, 1, sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(14,10))
 
     for name, group in groups:   
             if name==False:
