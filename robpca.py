@@ -128,8 +128,8 @@ for index in range(intervals):
 # into two portions - use the top (ax) for the outliers, and the bottom
 # (ax2) for the details of the majority of our data
     # so sharey=False, and we make two axes
-    f, (ax, ax2) = plt.subplots(2, 1, sharex=True,figsize=(14,10))
-    ymin, ymax = ylim() 
+    fig, (ax, ax2) = plt.subplots(2, 1, sharex=True,figsize=(14,10))
+    ymin, ymax = plt.ylim() 
 
     for name, group in groups:   
             if name==False:
@@ -137,7 +137,35 @@ for index in range(intervals):
                 #plt.show()
             else:
                 ax.scatter(x=group["orig_bytes"],y=group["resp_bytes"],c=group.mcd.map(colors),marker='p',label='attack',vmin=0, vmax=4)                       
-                plt.show()
+                #plt.show()
+    # zoom-in / limit the view to different portions of the data
+    ax.set_ylim(500000, ymax)  # outliers only
+    ax2.set_ylim(0, 20000)  # most of the data
+    # hide the spines between ax and ax2
+    ax.spines['bottom'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+    ax.xaxis.tick_top()
+    ax.tick_params(labeltop='off')  # don't put tick labels at the top
+    ax2.xaxis.tick_bottom()
+    
+    # This looks pretty good, and was fairly painless, but you can get that
+    # cut-out diagonal lines look with just a bit more work. The important
+    # thing to know here is that in axes coordinates, which are always
+    # between 0-1, spine endpoints are at these locations (0,0), (0,1),
+    # (1,0), and (1,1).  Thus, we just need to put the diagonals in the
+    # appropriate corners of each of our axes, and so long as we use the
+    # right transform and disable clipping.
+    
+    d = .015  # how big to make the diagonal lines in axes coordinates
+    # arguments to pass to plot, just so we don't keep repeating them
+    kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+    ax.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
+    ax.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
+    
+    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+    ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
+
     #axes.scatter(x=df_clean["orig_bytes"],y=df_clean["resp_bytes"],c=df_clean.mcd.map(colors))
     #ax.legend()
     plt.show()
@@ -151,34 +179,9 @@ for index in range(intervals):
 ax.plot(pts)
 ax2.plot(pts)
 
-# zoom-in / limit the view to different portions of the data
-ax.set_ylim(.78, 1.)  # outliers only
-ax2.set_ylim(0, .22)  # most of the data
 
-# hide the spines between ax and ax2
-ax.spines['bottom'].set_visible(False)
-ax2.spines['top'].set_visible(False)
-ax.xaxis.tick_top()
-ax.tick_params(labeltop='off')  # don't put tick labels at the top
-ax2.xaxis.tick_bottom()
 
-# This looks pretty good, and was fairly painless, but you can get that
-# cut-out diagonal lines look with just a bit more work. The important
-# thing to know here is that in axes coordinates, which are always
-# between 0-1, spine endpoints are at these locations (0,0), (0,1),
-# (1,0), and (1,1).  Thus, we just need to put the diagonals in the
-# appropriate corners of each of our axes, and so long as we use the
-# right transform and disable clipping.
 
-d = .015  # how big to make the diagonal lines in axes coordinates
-# arguments to pass to plot, just so we don't keep repeating them
-kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
-ax.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
-ax.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
-
-kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
-ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
-ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
 
 # What's cool about this is that now if we vary the distance between
 # ax and ax2 via f.subplots_adjust(hspace=...) or plt.subplot_tool(),
