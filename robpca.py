@@ -129,7 +129,7 @@ for index in range(intervals):
 # (ax2) for the details of the majority of our data
     # so sharey=False, and we make two axes
     fig, (ax, ax2) = plt.subplots(2, 1, sharex=True,figsize=(14,10))
-    ymin, ymax = plt.ylim() 
+    ymax = max(group["resp_bytes"])
 
     for name, group in groups:   
             if name==False:
@@ -139,8 +139,8 @@ for index in range(intervals):
                 ax.scatter(x=group["orig_bytes"],y=group["resp_bytes"],c=group.mcd.map(colors),marker='p',label='attack',vmin=0, vmax=4)                       
                 #plt.show()
     # zoom-in / limit the view to different portions of the data
-    ax.set_ylim(500000, ymax)  # outliers only
-    ax2.set_ylim(0, 20000)  # most of the data
+    ax.set_ylim(100000, 1.2*ymax)  # outliers only
+    ax2.set_ylim(0, 5000)  # most of the data
     # hide the spines between ax and ax2
     ax.spines['bottom'].set_visible(False)
     ax2.spines['top'].set_visible(False)
@@ -156,15 +156,15 @@ for index in range(intervals):
     # appropriate corners of each of our axes, and so long as we use the
     # right transform and disable clipping.
     
-    d = .015  # how big to make the diagonal lines in axes coordinates
-    # arguments to pass to plot, just so we don't keep repeating them
-    kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
-    ax.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
-    ax.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
-    
-    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
-    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
-    ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
+#    d = .015  # how big to make the diagonal lines in axes coordinates
+#    # arguments to pass to plot, just so we don't keep repeating them
+#    kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+#    ax.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
+#    ax.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
+#    
+#    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+#    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+#    ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
 
     #axes.scatter(x=df_clean["orig_bytes"],y=df_clean["resp_bytes"],c=df_clean.mcd.map(colors))
     #ax.legend()
