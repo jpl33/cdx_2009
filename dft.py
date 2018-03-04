@@ -67,24 +67,34 @@ df2=df.copy()
 
 df2.ts=df2.ts.round()
 gb2=df2.groupby(['id_orig_h','id_resp_h'])
+ls=[len(kk) for kk in gb2.groups.values() ]
+
+sum_t=pd.DataFrame()
 
 
 for ss in gb2.groups.keys():
     pkt_ar=np.repeat(0,len(t_arr))
     dt=dict(zip(t_arr,pkt_ar))
+    
     gtemp=gb2.get_group(ss)
     gb3=gtemp.groupby(['ts']).sum()
-    for tt in gb3.index.values:
-        dt[tt]=gb3.loc[tt]['orig_pkts']
-#    y=gtemp['orig_pkts'].copy()
-#    t=gtemp['ts'].copy()
-    t,y =zip(*dt.items())  
-    y=pd.Series(y)
+#    for tt in gb3.index.values:
+#        dt[tt]=gb3.loc[tt]['orig_pkts']
+
+    
+    y=gb3['orig_pkts'].copy()
+    t=pd.Series(gb3.index.values)
+    t2=t-t.min()
+    
     # #  empirically determine sampling frquency for selected pair
-    dt2=last_ts_rnd-first_ts_rnd
-    sample_freq=dt2/gb3.shape[0]
+    dt2=t.max()-t.min()
+    if dt2>0:
+        sample_freq=gb3.shape[0]/dt2
+    else:
+        sample_freq=0  
     
     yd=y.describe()
+    td=t.diff().describe()
     y1=y-y.mean()
 
     dft=fft.rfft(y1.values)
@@ -92,10 +102,28 @@ for ss in gb2.groups.keys():
     w=sig.hamming(len(y1))
     dft_sig=fft.rfft(w*(y1.values))
     
-    dft_max=np.where(dft==dft.max())[0][0]
-    freq_max=freqs[dft_max]
-    dft_sig_max=np.where(dft_sig==dft_sig.max())[0][0]
-    freq_sig_max=freqs[dft_sig_max]
+    dft2=np.abs(dft)
+    if not len(dft)>1:
+        dft_max=0
+        freq_max=0
+    else:
+        dft_max=np.where(dft2==dft2[1:].max())[0][0]
+        freq_max=freqs[dft_max]
+    
+    dft_sig2=np.abs(dft_sig)
+    if not len(dft_sig)>1:
+        dft_sig=0
+        freq_sig_max=0
+    else:
+        dft_sig_max=np.where(dft_sig2==dft_sig2[1:].max())[0][0]
+        freq_sig_max=freqs[dft_sig_max]
+    
+    lsum=[ss[0],ss[1],len(gtemp),gb3.shape[0],freq_max,freq_sig_max]
+    ssum=pd.Series(lsum)
+    dfsum=pd.DataFrame(ssum).T
+    dfsum.columns=['orig','resp','ssl_sessions','ssl_seconds','freq_max','freq_wind_max']
+    sum_t=sum_t.append(dfsum)
+    sum_t.columns=['orig','resp','ssl_sessions','ssl_seconds','freq_max','freq_wind_max']
 #t=np.arange(0,100,1)
 #x1=np.sin(2*np.pi*t)
 #x2=np.random.randn(100)
@@ -114,24 +142,24 @@ for ss in gb2.groups.keys():
     
     fig, (ax,ax2,ax3) = plt.subplots(3,1,figsize=(14,10))
 
-    ax.plot(t, y1)
+    ax.plot(t2, y)
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Signal amplitude')
     
-    ax2.stem(freqs, np.abs(dft))
+    ax2.stem(freqs, dft2)
     ax2.set_xlabel('Frequency in Hertz [Hz]')
     ax2.set_ylabel('Frequency Domain (Spectrum) Magnitude')
-    ax2.set_xlim(0, sample_freq / 4)
-    ax2.set_ylim(-5, max(dft))
-    ax3.stem(freqs, np.abs(dft_sig))
+    ax2.set_xlim(0, freqs.max())
+    ax2.set_ylim(-5, max(dft2))
+    ax3.stem(freqs, dft_sig2)
     ax3.set_xlabel('Frequency in Hertz [Hz]')
     ax3.set_ylabel('windowed Frequency Domain (Spectrum) Magnitude')
-    ax3.set_xlim((0, sample_freq / 4))
-    ax3.set_ylim(-5, max(dft_sig))
+    ax3.set_xlim(0, freqs.max())
+    ax3.set_ylim(-5, max(dft_sig2))
     
     plt.show()
-    
-
+    fig.savefig(str(ss)+'2.png')
+    sum_t.to_csv('dft_summary.csv')
 
 #f = 10  # Frequency, in cycles per second, or Hertz
 #f_s = 100  # Sampling rate, or number of measurements per second
