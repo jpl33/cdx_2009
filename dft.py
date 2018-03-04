@@ -57,26 +57,38 @@ df =  pd.DataFrame(list(doc_tt))
 first_ts=df['ts'].min()
 # # find last timestamp
 last_ts=df['ts'].max()
+first_ts_rnd=first_ts.round()
+last_ts_rnd=last_ts.round()
+t_arr=np.arange(first_ts_rnd,last_ts_rnd)
 
 
 
+df2=df.copy()
 
-gb=df.groupby('id_orig_h')    
-srcs=gb.groups.keys()
+df2.ts=df2.ts.round()
+gb2=df2.groupby(['id_orig_h','id_resp_h'])
 
-for ss in srcs:
-    gtemp=gb.get_group(ss)
-    y=gtemp['orig_pkts'].copy()
-    t=gtemp['ts'].copy()
+
+for ss in gb2.groups.keys():
+    pkt_ar=np.repeat(0,len(t_arr))
+    dt=dict(zip(t_arr,pkt_ar))
+    gtemp=gb2.get_group(ss)
+    gb3=gtemp.groupby(['ts']).sum()
+    for tt in gb3.index.values:
+        dt[tt]=gb3.loc[tt]['orig_pkts']
+#    y=gtemp['orig_pkts'].copy()
+#    t=gtemp['ts'].copy()
+    t,y =zip(*dt.items())  
+    y=pd.Series(y)
     # #  empirically determine sampling frquency for selected pair
-    dt=t.max()-t.min()
-    sample_freq=dt/gtemp.shape[0]
+    dt2=last_ts_rnd-first_ts_rnd
+    sample_freq=dt2/gb3.shape[0]
     
     yd=y.describe()
     y1=y-y.mean()
 
     dft=fft.rfft(y1.values)
-    freqs=fft.rfftfreq(len(y1),d=(1/sample_freq))
+    freqs=fft.rfftfreq(len(y1))
     w=sig.hamming(len(y1))
     dft_sig=fft.rfft(w*(y1.values))
     
