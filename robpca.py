@@ -15,12 +15,14 @@ Created on Tue Jan 16 09:53:31 2018
 import pandas as pd
 import math
 import numpy as np
+import scipy as sci
 import json
 import pymongo
 import sys
 import os
 import rpy2
-
+from rpy2.robjects.packages import importr
+import rpy2.robjects.numpy2ri
 #import csv
 #import io
 #import re
@@ -49,8 +51,17 @@ mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_re
 vuln_service={'http':0,'ftp':0,'dns':0,'dhcp':0,'sip':0,'ssh':0,'smb':0,'dce_rpc':0,'mysql':0,'snmp':0,'ssl':0}
 
 collection_filters={'conn':[('ts',pymongo.ASCENDING)]}
-conn_fields= [  'duration',    'orig_bytes', 'orig_pkts', 'resp_bytes', 
-       'resp_pkts' ]
+#conn_fields= [  'duration',    'orig_bytes', 'orig_pkts', 'resp_bytes', 
+#       'resp_pkts' ]
+
+
+def   time_to_ts(row_ts):  
+      strd=row_ts[:-2]
+      dt=datetime.datetime.strptime(strd,'%m/%d/%y-%H:%M:%S.%f')
+      snrt_ts = dt.timestamp()
+      snrt_ts=snrt_ts+7200
+      return snrt_ts
+
 
 
 def get_db():
@@ -63,7 +74,7 @@ class JSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-pcap_dir= 'maccdc2012_00000'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -73,7 +84,7 @@ finish=collection_pcap.count()
 time_interval=180
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','attack_bool']
+df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr']
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -91,15 +102,42 @@ for index in range(intervals):
     
     
     # # find from the timestamp, up to the pre-set time interval size
-    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
+    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$exists':True}}]})
     df =  pd.DataFrame(list(doc_tt)) 
     df_cnt=df.shape[0]
-    from rpy2.robjects.packages import importr
-    import rpy2.robjects.numpy2ri
+    df['orig_pkts_intr']=df.orig_pkts/df.duration
+    #df['orig_resp_ts_diff']=np.repeat(0,df_cnt)
+    df2=df.copy()
+    df2.ts=df2.ts.round()
+    df2['cum_pkt_count']=0
+    gb=df2.groupby(['id_orig_h','id_resp_h'])
+    ggtsdf=list()
+    gdict=gb.groups
+    for ss in gb.groups:
+        gtemp=gb.get_group(ss)
+        df3=gtemp.groupby(['ts']).sum()
+#        if gtemp.ts.count()<2:
+#            ggtsdf.append(0)
+#            df3.iloc[gdict[ss].values,34]=0
+#            continue
+        gtsdf=df3.orig_pkts.median()
+        ggtsdf.append(gtsdf)
+        df2.iloc[gdict[ss].values,34]=gtsdf
+    op_dict=dict(zip(gdict.keys(),ggtsdf))
+    op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
+    iqr=sci.stats.iqr(op_ser)
+    op_df=pd.DataFrame(op_ser)
+    armean=op_ser.loc[op_ser>(op_ser.median()+1.5*iqr)].index
+    for sd in armean:
+        gtemp2=gb.get_group(sd)
+        op_df.loc[sd,'num']=gtemp2.shape[0]
+    
+    
+    
     rpy2.robjects.numpy2ri.activate()
     rospca=importr("rospca")
     robust_base=importr("robustbase")
-    df_clean=df[conn_fields]
+    df_clean=df[df_feature_cols]
     df_clean=df_clean.fillna(0)
     ## hard to believe but pandas does NOT have a normalizing function
     #df_norm=(df_clean-df_clean.mean())/df_clean.std()
@@ -110,13 +148,33 @@ for index in range(intervals):
     mcd_cov=np.array(mcd[3])
     mcd_cor=np.array(mcd[6])
     H0=np.array(rpca[5])
+    dfh_h0=df.iloc[H0-1]
     df_clean["mcd"]=0
     #df_clean[df_clean["mcd"]]
     for hh in H0:
         df_clean.loc[hh-1,"mcd"]=1
+    
+    bin_lst=list(df.id)
+    mcd_lst=df[df.mcd==1,id]
+    
+    collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'mcd':False}})
+    collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
+    collection_pcap.update_many({'_id': {'$in': mcd_lst}},{'$set':{'mcd':True}})
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     df_clean["attack_bool"]=True
     df_clean["attack_bool"][df["attack_bool"]==False]=False
-    fig=plt.figure(figsize=(14,10))
+    fig=plt.figure(figsize=(24,16))
     #fig, axes = plt.subplots(1, 1, sharex=True, sharey=True)
     colors = {0: 'red', 1: 'aqua'}
     markers={1:"o",0:"p"}
@@ -138,3 +196,19 @@ for index in range(intervals):
     fig.savefig('plot_mcd.png',bbox_inches='tight')  
     print("finished pca")
     
+    
+    
+#    gb=df.groupby(['id_orig_h','id_resp_h'])
+#    ggtsdf=list()
+#    gdict=gb.groups
+#    for ss in gb.groups:
+#        gtemp=gb.get_group(ss)
+#        if gtemp.ts.count()<2:
+#            ggtsdf.append(0)
+#            df.iloc[gdict[ss].values,34]=0
+#            continue
+#        gtsdf=gtemp.ts.diff()
+#        gtsdfmd=gtsdf.median()
+#        ggtsdf.append(gtsdfmd)
+#        df.iloc[gdict[ss].values,34]=gtsdfmd
+#    ts_dict=dict(zip(gdict.keys(),ggtsdf)) 
