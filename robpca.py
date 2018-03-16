@@ -84,7 +84,7 @@ finish=collection_pcap.count()
 time_interval=180
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr']
+df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count']
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -102,43 +102,50 @@ for index in range(intervals):
     
     
     # # find from the timestamp, up to the pre-set time interval size
-    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$exists':True}}]})
+    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
     df =  pd.DataFrame(list(doc_tt)) 
     df_cnt=df.shape[0]
     df['orig_pkts_intr']=df.orig_pkts/df.duration
-    #df['orig_resp_ts_diff']=np.repeat(0,df_cnt)
     df2=df.copy()
     df2.ts=df2.ts.round()
-    df2['cum_pkt_count']=0
+    df2['cumultv_pkt_count']=0
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     ggtsdf=list()
     gdict=gb.groups
     for ss in gb.groups:
         gtemp=gb.get_group(ss)
         df3=gtemp.groupby(['ts']).sum()
-#        if gtemp.ts.count()<2:
-#            ggtsdf.append(0)
-#            df3.iloc[gdict[ss].values,34]=0
-#            continue
         gtsdf=df3.orig_pkts.median()
         ggtsdf.append(gtsdf)
-        df2.iloc[gdict[ss].values,34]=gtsdf
-    op_dict=dict(zip(gdict.keys(),ggtsdf))
+        df2.iloc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
+
     op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
     iqr=sci.stats.iqr(op_ser)
+    cum_pkt_sec_th=op_ser.median()+1.5*iqr
     op_df=pd.DataFrame(op_ser)
-    armean=op_ser.loc[op_ser>(op_ser.median()+1.5*iqr)].index
+    
+    armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
     for sd in armean:
         gtemp2=gb.get_group(sd)
         op_df.loc[sd,'num']=gtemp2.shape[0]
     
-    
-    
+    op_df=op_df.sort_values(by='num', ascending = False)
+    num_sum=op_df.num.sum()
+    outly_flws=0
+    outly_pairs=list()
+    for nn in op_df.num:
+        outly_flws+=nn
+        outly_pairs.append(op_df.loc[op_df.num==nn].index[0])
+        outly_th=0.25*(df_cnt-outly_flws)
+        if num_sum-outly_flws<outly_th:
+            break
     rpy2.robjects.numpy2ri.activate()
     rospca=importr("rospca")
     robust_base=importr("robustbase")
-    df_clean=df[df_feature_cols]
-    df_clean=df_clean.fillna(0)
+    for ppn in outly_pairs:
+        df_clean=df2[~df2.index.isin(gdict[ppn].values)]
+        df_clean=df_clean[df_feature_cols]
+        df_clean=df_clean.fillna(0)
     ## hard to believe but pandas does NOT have a normalizing function
     #df_norm=(df_clean-df_clean.mean())/df_clean.std()
     df_mat=df_clean.as_matrix()
@@ -148,14 +155,15 @@ for index in range(intervals):
     mcd_cov=np.array(mcd[3])
     mcd_cor=np.array(mcd[6])
     H0=np.array(rpca[5])
+    H1=np.array(rpca[6])
     dfh_h0=df.iloc[H0-1]
-    df_clean["mcd"]=0
+    df_clean["mcd"]=False
     #df_clean[df_clean["mcd"]]
     for hh in H0:
-        df_clean.loc[hh-1,"mcd"]=1
+        df_clean.iloc[hh-1,df_clean.columns.get_loc('mcd')]=True
     
-    bin_lst=list(df.id)
-    mcd_lst=df[df.mcd==1,id]
+    bin_lst=list(df._id)
+    mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
     
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'mcd':False}})
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
