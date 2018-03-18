@@ -97,47 +97,61 @@ last_doc= collection_pcap.find(sort=[('ts',-1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
 for dd in last_doc: last_ts=dd['ts']
 
-intervals=math.ceil((last_ts-first_ts)/time_interval)
+intervals=math.floor((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
     
     
     # # find from the timestamp, up to the pre-set time interval size
+    # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
     doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
     df =  pd.DataFrame(list(doc_tt)) 
+    # # number of flows in bin
     df_cnt=df.shape[0]
+    # # origin_pkts interval per flow
     df['orig_pkts_intr']=df.orig_pkts/df.duration
     df2=df.copy()
     df2.ts=df2.ts.round()
+    # # cumulative origin pkts per second for  orig-resp pairs
     df2['cumultv_pkt_count']=0
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     ggtsdf=list()
     gdict=gb.groups
+    # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
     for ss in gb.groups:
         gtemp=gb.get_group(ss)
         df3=gtemp.groupby(['ts']).sum()
         gtsdf=df3.orig_pkts.median()
+        # # ggtsdf is list of all pairs origin_pkts/second medians
         ggtsdf.append(gtsdf)
+        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
         df2.iloc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
-
+        
+    # # series of orig_pkts/sec medians with orig-resp pairs as index    
     op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
     iqr=sci.stats.iqr(op_ser)
     q3=op_ser.quantile(0.75)
+    # # upper threshold for orig-dest cumulative orig_pkts/sec
     cum_pkt_sec_th=q3+1.5*iqr
     op_df=pd.DataFrame(op_ser)
     
+    # # array of all orig-dest orig_pkts/sec medians HIGHER tha the threshold
     armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
     for sd in armean:
         gtemp2=gb.get_group(sd)
+        # # just how many flows of this orig-resp pair are there in this bin
         op_df.loc[sd,'num']=gtemp2.shape[0]
     
+    # # sort the dataframe for the highest number of flows, NOT the highest orig_pkts/sec. we want the pair that has the most influence on our data
     op_df=op_df.sort_values(by='num', ascending = False)
+    # # total number of flows of pairs with orig_pkts/sec higher than the threshold
     num_sum=op_df.num.sum()
     outly_flws=0
     outly_pairs=list()
     for nn in op_df.num:
         outly_flws+=nn
         outly_pairs.append(op_df.loc[op_df.num==nn].index[0])
+        # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
         outly_th=0.25*(df_cnt-outly_flws)
         if num_sum-outly_flws<outly_th:
             break
@@ -145,11 +159,11 @@ for index in range(intervals):
     rospca=importr("rospca")
     robust_base=importr("robustbase")
     for ppn in outly_pairs:
+        # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
         df_clean=df2[~df2.index.isin(gdict[ppn].values)]
         df_clean=df_clean[df_feature_cols]
         df_clean=df_clean.fillna(0)
-    ## hard to believe but pandas does NOT have a normalizing function
-    #df_norm=(df_clean-df_clean.mean())/df_clean.std()
+    
     df_mat=df_clean.as_matrix()
     rpca=rospca.robpca(x=df_mat,mcd=True)
     mcd=robust_base.covMcd(df_mat,cor = True, alpha=0.75)
@@ -172,41 +186,7 @@ for index in range(intervals):
     collection_pcap.update_many({'_id': {'$in': mcd_lst}},{'$set':{'mcd':True}})
 
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    df_clean["attack_bool"]=True
-    df_clean["attack_bool"][df["attack_bool"]==False]=False
-    fig=plt.figure(figsize=(24,16))
-    #fig, axes = plt.subplots(1, 1, sharex=True, sharey=True)
-    colors = {0: 'red', 1: 'aqua'}
-    markers={1:"o",0:"p"}
-   
-    groups = df_clean.groupby('attack_bool')
 
-    fig, axes = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(14,10))
-
-    for name, group in groups:   
-            if name==False:
-                axes.scatter(x=group["orig_bytes"],y=group["resp_bytes"],c=group.mcd.map(colors),marker='o',label='no attack',vmin=0, vmax=4)
-                #plt.show()
-            else:
-                axes.scatter(x=group["orig_bytes"],y=group["resp_bytes"],c=group.mcd.map(colors),marker='p',label='attack',vmin=0, vmax=4)                       
-                plt.show()
-    #axes.scatter(x=df_clean["orig_bytes"],y=df_clean["resp_bytes"],c=df_clean.mcd.map(colors))
-    #ax.legend()
-    plt.show()
-    fig.savefig('plot_mcd.png',bbox_inches='tight')  
-    print("finished pca")
-    
-    
     
 #    gb=df.groupby(['id_orig_h','id_resp_h'])
 #    ggtsdf=list()
