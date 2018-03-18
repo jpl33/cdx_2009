@@ -69,7 +69,7 @@ def  base_conn_stats(df):
      return sum_t
     
 #home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00005'
+pcap_dir= 'maccdc2012_00003'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -79,15 +79,7 @@ finish=collection_pcap.count()
 time_interval=180
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','attack_bool']
-
-#dd=df[:10]
-#ddkl=[]
-#for d3 in dd['attack']:    
-#    if d3.isnull():
-#        ddkl.append(0)
-#    else:    
-#        ddkl.append(dict(d3)['count'])
+df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','attack_bool']
 
 
 # In[ ]:
@@ -103,13 +95,16 @@ last_doc= collection_pcap.find(sort=[('ts',-1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
 for dd in last_doc: last_ts=dd['ts']
 
-intervals=math.ceil((last_ts-first_ts)/time_interval)
+intervals=math.floor((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
     
     
-    # # find from the timestamp, up to the pre-set time interval size
-    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
+    if index==intervals-1:
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})
+    else:
+        # # find from the timestamp, up to the pre-set time interval size
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
     df =  pd.DataFrame(list(doc_tt)) 
     df_cnt=df._id.count()
     
@@ -118,21 +113,26 @@ for index in range(intervals):
     srv_dict={}
     srv_dfs={}
     
-    s1=df[df_feature_cols].describe()
-    sum_t=pd.DataFrame(s1)
-    mdd=df[df_feature_cols].median()
-    sum_t=pd.concat([sum_t,pd.DataFrame(mdd).T])
-    sum_t=sum_t.rename(index={0:'median'})
-    dcc=df[df['attack_bool']==True]
-    dcc=dcc.shape[0]  
-    sum_t.loc['count','attack_bool']=dcc
+    
+    df['orig_pkts_intr']=df.orig_pkts/df.duration
+    df['cumultv_pkt_count']=0
+    df2=df[df['orig_bytes']>0].copy()
+    sum_t=base_conn_stats(df2)
     df_dict=json.loads(sum_t.to_json())
     df_jsn=dict()
     df_attk=dict()
-    df_jsn['conn']=df_dict
-    df_atk_cn=df[df.attack_bool==True]
+    df_jsn['conn_bin']=df_dict
+    df_atk_cn=df2[df2.attack_bool==True]
     df_atk_cn_jsn=base_conn_stats(df_atk_cn)
-    df_attk['conn']=json.loads(df_atk_cn_jsn.to_json())
+    df_attk['conn_bin']=json.loads(df_atk_cn_jsn.to_json())
+    
+    df3=df[~df.index.isin(df2.index.values)]
+    sum3_t=base_conn_stats(df3)
+    df_dict3=json.loads(sum3_t.to_json())
+    df_jsn['conn_null']=df_dict3
+    df3_atk_cn=df3[df3.attack_bool==True]
+    df3_atk_cn_jsn=base_conn_stats(df3_atk_cn)
+    df_attk['conn_null']=json.loads(df3_atk_cn_jsn.to_json())
     
     for nm in srv_cnt:
 ###     
@@ -188,7 +188,10 @@ for index in range(intervals):
     
     
     df_jsn['first_ts']=first_ts
-    df_jsn['last_ts']=first_ts+time_interval
+    if index==intervals-1:
+        df_jsn['last_ts']=last_ts
+    else:
+        df_jsn['last_ts']=first_ts+time_interval
     df_jsn['pcap_dir']=pcap_dir
     # #  increment the timestamp
     first_ts=first_ts+time_interval

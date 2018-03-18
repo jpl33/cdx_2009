@@ -101,10 +101,13 @@ intervals=math.floor((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
     
-    
-    # # find from the timestamp, up to the pre-set time interval size
-    # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
-    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
+    if index==intervals-1:
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'orig_bytes':{'$gt':0}}]})
+    else:
+        # # find from the timestamp, up to the pre-set time interval size
+        # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
+
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
