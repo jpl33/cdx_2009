@@ -60,16 +60,13 @@ def  set_collections_index(prefix):
 def  base_conn_stats(df):
      s1=df[df_feature_cols].describe()
      sum_t=pd.DataFrame(s1)
-     mdd=df[df_feature_cols].median()
-     sum_t=pd.concat([sum_t,pd.DataFrame(mdd).T])
-     sum_t=sum_t.rename(index={0:'median'})
      dcc=df[df['attack_bool']==True]
      dcc=dcc.shape[0]  
      sum_t.loc['count','attack_bool']=dcc
      return sum_t
     
 #home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00003'
+pcap_dir= 'maccdc2012_00000'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -165,9 +162,6 @@ for index in range(intervals):
                 srv_dfs[ssrv]=d1[df_feature_cols]
                 sl=srv_dfs[ssrv].describe()
                 st=pd.DataFrame(sl)
-                mdd=srv_dfs[ssrv].median()
-                sum_t=pd.concat([st,pd.DataFrame(mdd).T])
-                sum_t=sum_t.rename(index={0:'median'})
                 dcc=d1[d1['attack_bool']==True]
                 dcc=dcc.shape[0]  
                 sum_t.loc['count','attack_bool']=dcc

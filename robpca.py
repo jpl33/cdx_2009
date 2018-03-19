@@ -113,6 +113,15 @@ for index in range(intervals):
     df_cnt=df.shape[0]
     # # origin_pkts interval per flow
     df['orig_pkts_intr']=df.orig_pkts/df.duration
+    serv_freq=df.service.value_counts()/df_cnt
+    df['serv_freq']=0
+    for idd in serv_freq.index.values:
+        df.loc[df.service==idd,'serv_freq']= serv_freq.loc[idd]       
+    history_freq=df.history.value_counts()/df_cnt
+    conn_state_freq=df.conn_state.value_counts()/df_cnt
+    
+    
+    
     df2=df.copy()
     df2.ts=df2.ts.round()
     # # cumulative origin pkts per second for  orig-resp pairs
@@ -183,6 +192,12 @@ for index in range(intervals):
     
     bin_lst=list(df._id)
     mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
+    doc_idd=collection_pcap.find({'_id':{'$in':bin_lst}})
+    for idd in doc_idd:
+        collection_pcap.update_one({'_id':idd['_id']},{'$set':{'orig_pkts_intr':df.loc[df._id==idd['_id'],'orig_pkts_intr'].values[0]}})
+    
+    
+   
     
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'mcd':False}})
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
