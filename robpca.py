@@ -28,6 +28,7 @@ import rpy2.robjects.numpy2ri
 #import io
 #import re
 import itertools
+import timeit
 import getopt
 import logging
 import time
@@ -83,9 +84,18 @@ collection_pcap = get_db()[pcap_dir+'_conn']
 collection_bins= get_db()['bins']
 finish=collection_pcap.count()
 time_interval=180
+
+
+
+def unset_vars():
+    collection_pcap.update_many({'bin':{'$exists':True}},{'$unset':{'orig_pkts_intr':'','mcd':'','bin':''}},upsert=False)
+
+
+
+
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count']
+df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -113,12 +123,23 @@ for index in range(intervals):
     df_cnt=df.shape[0]
     # # origin_pkts interval per flow
     df['orig_pkts_intr']=df.orig_pkts/df.duration
+    
+    df['orig_pkts_size']=df.orig_bytes/df.orig_pkts
+    
     serv_freq=df.service.value_counts()/df_cnt
     df['serv_freq']=0
     for idd in serv_freq.index.values:
         df.loc[df.service==idd,'serv_freq']= serv_freq.loc[idd]       
+    
     history_freq=df.history.value_counts()/df_cnt
+    df['history_freq']=0
+    for idd in history_freq.index.values:
+        df.loc[df.history==idd,'history_freq']= history_freq.loc[idd]    
+    
     conn_state_freq=df.conn_state.value_counts()/df_cnt
+    df['conn_state_freq']=0
+    for idd in conn_state_freq.index.values:
+        df.loc[df.conn_state==idd,'conn_state_freq']= conn_state_freq.loc[idd]    
     
     
     
@@ -192,20 +213,47 @@ for index in range(intervals):
     
     bin_lst=list(df._id)
     mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
-    doc_idd=collection_pcap.find({'_id':{'$in':bin_lst}})
-    for idd in doc_idd:
-        collection_pcap.update_one({'_id':idd['_id']},{'$set':{'orig_pkts_intr':df.loc[df._id==idd['_id'],'orig_pkts_intr'].values[0]}})
     
+    time_bulk=timeit.default_timer()
+    bulk=collection_pcap.initialize_unordered_bulk_op()
+    for idd in bin_lst:
+        bulk.find({'_id':idd}).update_one({'$set':{'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
+                                                    ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
+                                                    ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
+                                                    ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
+                                                    ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]}})
+    bulk.execute()   
+    elapsed_bulk=timeit.default_timer()-time_bulk
+    
+
     
    
     
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'mcd':False}})
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
     collection_pcap.update_many({'_id': {'$in': mcd_lst}},{'$set':{'mcd':True}})
-
     
-
+    df_mcd=pd.DataFrame(mcd_cor)
+    df_mcd.columns=df_clean.columns[:-1]
+    mcd_js=df_mcd.to_json()
+    mcd_dict=json.loads(mcd_js)
+    llp=json.dumps(outly_pairs)
     
+    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'mcd_cor':mcd_dict,'outlying_pairs':llp}},upsert=False)
+    
+    
+#    mcd_df2=pd.read_json(json.dumps(mcd_dict))
+#    llp=json.loads(llp)
+
+
+
+#    collection_pcap.update_many({'orig_pkts_intr':{'$exists':True}},{'$unset':{'orig_pkts_intr':''}},upsert=False)
+#    
+#    time_single=timeit.default_timer()
+#    doc_idd=collection_pcap.find({'_id':{'$in':bin_lst}})
+#    for idd in doc_idd:
+#        collection_pcap.update_one({'_id':idd['_id']},{'$set':{'orig_pkts_intr':df.loc[df._id==idd['_id'],'orig_pkts_intr'].values[0]}})
+#    elapsed_single=timeit.default_timer()-time_single    
 #    gb=df.groupby(['id_orig_h','id_resp_h'])
 #    ggtsdf=list()
 #    gdict=gb.groups
