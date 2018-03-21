@@ -53,8 +53,7 @@ mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_re
 vuln_service={'http':0,'ftp':0,'dns':0,'dhcp':0,'sip':0,'ssh':0,'smb':0,'dce_rpc':0,'mysql':0,'snmp':0,'ssl':0}
 
 collection_filters={'conn':[('ts',pymongo.ASCENDING)]}
-#conn_fields= [  'duration',    'orig_bytes', 'orig_pkts', 'resp_bytes', 
-#       'resp_pkts' ]
+
 
 
 def   time_to_ts(row_ts):  
@@ -90,8 +89,18 @@ time_interval=180
 def unset_vars():
     collection_pcap.update_many({'bin':{'$exists':True}},{'$unset':{'orig_pkts_intr':'','mcd':'','bin':''}},upsert=False)
 
-
-
+def robust_f_params(n,p,h):
+    #h=(n+p+1)/2
+    a=1-h
+    qa=chi2.isf(a,df=p)
+    d=chi2.cdf(qa,p+2)
+    ca=h/(d)
+    c2=-d/2
+    c3=-(chi2.cdf(qa,p+4))/2
+    c4=3*c3
+    b1=ca*(c3-c4)/h
+    b2=.5+(ca/h)*(c3-(qa/p)*(c2+h/2))
+    v1=(p+2)*b2*(2*b1-p*b2)
 
 #intervals=round(finish/interval_size)
 df_collection = {}
