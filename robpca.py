@@ -85,22 +85,31 @@ finish=collection_pcap.count()
 time_interval=180
 
 
+c*(m − p + 1)/(p*m)*d2 S∗(Xi, X¯ ∗) ∼· F(p,m−p+1)
+
+
 
 def unset_vars():
     collection_pcap.update_many({'bin':{'$exists':True}},{'$unset':{'orig_pkts_intr':'','mcd':'','bin':''}},upsert=False)
 
-def robust_f_params(n,p,h):
+def robust_f_m_param(n,p,h):
     #h=(n+p+1)/2
     a=1-h
-    qa=chi2.isf(a,df=p)
-    d=chi2.cdf(qa,p+2)
+    qa=sci.stats.chi2.isf(a,df=p)
+    d=sci.stats.chi2.cdf(qa,p+2)
     ca=h/(d)
     c2=-d/2
-    c3=-(chi2.cdf(qa,p+4))/2
+    c3=-(sci.stats.chi2.cdf(qa,p+4))/2
     c4=3*c3
     b1=ca*(c3-c4)/h
     b2=.5+(ca/h)*(c3-(qa/p)*(c2+h/2))
-    v1=(p+2)*b2*(2*b1-p*b2)
+    v1=h*(b1**2)*(a*((ca*qa/p-1)**2)-1)-2*c3*(ca**2)*3*((b1-p*b2)**2)+(p+2)*b2*(2*b1-p*b2)
+    v2=n*((b1*(b1-p*b2)*h)**2)*(ca**2)
+    v=v1/v2
+    M_asy=2/((ca**2)*v)
+    M_pred=M_asy*math.exp(0.725-.00663*p-0.0780*math.log(n))
+    return M_pred
+    
 
 #intervals=round(finish/interval_size)
 df_collection = {}
