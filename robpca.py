@@ -17,6 +17,8 @@ import pandas as pd
 import math
 import numpy as np
 import scipy as sci
+from statsmodels.multivariate.pca import PCA
+from sklearn import decomposition
 import json
 import pymongo
 import sys
@@ -85,7 +87,7 @@ finish=collection_pcap.count()
 time_interval=180
 
 
-c*(m − p + 1)/(p*m)*d2 S∗(Xi, X¯ ∗) ∼· F(p,m−p+1)
+#c*(m − p + 1)/(p*m)*d2 S∗(Xi, X¯ ∗) ∼· F(p,m−p+1)
 
 
 
@@ -108,8 +110,19 @@ def robust_f_m_param(n,p,h):
     v=v1/v2
     M_asy=2/((ca**2)*v)
     M_pred=M_asy*math.exp(0.725-.00663*p-0.0780*math.log(n))
-    return M_pred
+    if n<1000:
+        return  M_pred
+    else:
+        return M_asy
     
+
+def robust_f_c_param(n,p,h):
+    c1=sci.stats.chi2.ppf(h,df=p)
+    c2=sci.stats.chi2.cdf(c1,df=p+2)
+    return c2/h
+
+
+
 
 #intervals=round(finish/interval_size)
 df_collection = {}
@@ -165,6 +178,8 @@ for index in range(intervals):
     df2.ts=df2.ts.round()
     # # cumulative origin pkts per second for  orig-resp pairs
     df2['cumultv_pkt_count']=0
+    df['cumultv_pkt_count']=0
+    
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     ggtsdf=list()
     gdict=gb.groups
@@ -177,7 +192,9 @@ for index in range(intervals):
         ggtsdf.append(gtsdf)
         # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
         df2.iloc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
-        
+        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
+        df.iloc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
+    
     # # series of orig_pkts/sec medians with orig-resp pairs as index    
     op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
     iqr=sci.stats.iqr(op_ser)
@@ -215,17 +232,72 @@ for index in range(intervals):
         df_clean=df_clean[df_feature_cols]
         df_clean=df_clean.fillna(0)
     
-    df_mat=df_clean.as_matrix()
+    df3=df[df_feature_cols]
+    df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
+    df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
+    df_mat=df_c_n.as_matrix()
     rpca=rospca.robpca(x=df_mat,mcd=True)
-    mcd=robust_base.covMcd(df_mat,cor = True, alpha=0.75)
     loadings=np.array(rpca[0])
-    mcd_cov=np.array(mcd[3])
-    mcd_cor=np.array(mcd[6])
+    e_vals=np.array(rpca[1])
+    center=np.array(rpca[3])
+    scores=np.array(rpca[2])
     H0=np.array(rpca[5])
     H1=np.array(rpca[6])
+    SD=np.array(rpca[9])
+   
+    sc_mine=(df_mat[:5]-center).dot(loadings)
+    sd_mine=list()
+    for scc in sc_mine:
+        i=0
+        sdi=0
+        for scx in scc:
+            sdi+=(scx**2)/e_vals[i]
+            i+=1
+        sd_mine.append(math.sqrt(sdi))
+    
+    num_e_vals=e_vals.shape[0]
+    lambda_mat=e_vals*np.identity(num_e_vals)    
+    pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
+    feat_vec0=np.repeat(0,df_clean.shape[1])
+    feat_list=list()
+    i=0
+    feat_vec1=feat_vec0
+    for n in range(0,df_c_n.shape[1]):
+        feat_vec1[i]=1
+        print(feat_vec1)
+        denom=feat_vec1.dot(pca_cov).dot(feat_vec1.T)
+        numer=feat_vec1.dot(pca_cov).dot(df_c_n.iloc[0].values)
+        feat_list.append(numer**2/denom  )
+        feat_vec1[i]=0
+        i+=1
+    
+    
+    pca_df_c=PCA(df_clean)
+    e_vals=pca_df_c.eigenvals
+    e_vecs=pca_df_c.eigenvecs
+
+    time_df_c_n=timeit.default_timer()
+    rpca=rospca.robpca(x=df_c_n.as_matrix(),mcd=True)
+    elapsed_df_c_n=timeit.default_timer()-time_df_c_n
+    
+    time_df_clean=timeit.default_timer()
+    rpca=rospca.robpca(x=df_clean.as_matrix(),mcd=True)
+    elapsed_df_clean=timeit.default_timer()-time_df_clean
+    
+    
+    time_df3=timeit.default_timer()
+    rpca=rospca.robpca(x=df3.as_matrix(),mcd=True)
+    elapsed_df3=timeit.default_timer()-time_df3
+    
+    time_df3_norm=timeit.default_timer()
+    rpca=rospca.robpca(x=df3_norm.as_matrix(),mcd=True)
+    elapsed_df3_norm=timeit.default_timer()-time_df3_norm
+    
+    
+    
+    
     dfh_h0=df.iloc[H0-1]
     df_clean["mcd"]=False
-    #df_clean[df_clean["mcd"]]
     for hh in H0:
         df_clean.iloc[hh-1,df_clean.columns.get_loc('mcd')]=True
     
@@ -264,6 +336,39 @@ for index in range(intervals):
 #    llp=json.loads(llp)
 
 
+
+
+
+
+
+#    projected_df_c=pca_df_c.factors
+#    e_vals_sum=e_vals.sum()
+#    k_v=0
+#    sum_e_vals=0
+#    for vv in e_vals:
+#        if sum_e_vals<0.8*e_vals_sum:
+#            k_v+=1
+#            sum_e_vals+=vv
+#     
+#    proj_df_c=projected_df_c.iloc[:,:k_v]
+#    
+#    df_c_corr=df_norm.cov()
+#    df_c_corr2=np.corrcoef(df_clean,rowvar=False)
+#    dfc_vals,dfc_vecs=np.linalg.eig(df_c_corr2)
+#    sum_dfc_vals=dfc_vals.sum()
+#    k_v=0
+#    sum_e_vals=0
+#    for vv in dfc_vals:
+#        if sum_e_vals<0.8*sum_dfc_vals:
+#            k_v+=1
+#            sum_e_vals+=vv
+#    
+#    test_df_proj_1=(df_norm.iloc[:5,]).values.dot(e_vecs.iloc[:,:5])
+#    test_df_proj_2=(df_clean.iloc[:5,]-df_clean.mean()).values.dot(e_vecs.iloc[:,:5])
+#    project=pca_df_c.project(ncomp=k_v,transform=False)
+#    u,s,v=np.linalg.svd(df_norm)
+#    
+#    skpca=decomposition.PCA(df_norm)
 
 #    collection_pcap.update_many({'orig_pkts_intr':{'$exists':True}},{'$unset':{'orig_pkts_intr':''}},upsert=False)
 #    
