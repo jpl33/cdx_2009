@@ -17,21 +17,17 @@ import pandas as pd
 import math
 import numpy as np
 import scipy as sci
-from statsmodels.multivariate.pca import PCA
-from sklearn import decomposition
+
 import json
 import pymongo
-import sys
-import os
+
 import rpy2
 from rpy2.robjects.packages import importr
 import rpy2.robjects.numpy2ri
-#import csv
-#import io
-#import re
+
 import itertools
 import timeit
-import getopt
+
 import logging
 import time
 import matplotlib.pyplot as plt
@@ -132,9 +128,29 @@ def which_feature_SD(df_row,pca_cov):
     return feat_list_x
 
 
+def which_feature_OD(df_row):
+    feat_list_x=list()
+    for n in range(0,df_row.shape[0]):
+        feat_list_i=list(df_row.iloc[n])
+        feat_list_x.append(df_row.columns[feat_list_i.index(max(feat_list_i))])
+    return feat_list_x
+
+def jsd(df,mcd):
+    dff=pd.concat([df,mcd],axis=1)
+    dff.columns=['df','mcd']    
+    dff['m']=dff.sum(axis=1)/2
+    dff['kl_df']=dff.df*np.log(dff.df/dff.m)
+    dff['kl_mcd']=dff.mcd*np.log(dff.mcd/dff.m)
+    dff.fillna(0)    
+    dff['jsd']=dff.loc[:,'kl_df':'kl_mcd'].sum(axis=1)/2
+    return dff.jsd
+
 #intervals=round(finish/interval_size)
 df_collection = {}
 df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
+
+
+df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -260,68 +276,103 @@ for index in range(intervals):
     OD_th=np.array(rpca[12])
     SD_flag=np.array(rpca[13])
     OD_flag=np.array(rpca[14])
-   
     
+   
+    robust_base=importr("robustbase")
+    mcd=robust_base.covMcd(df_mat,cor = True, alpha=0.75)
+    mcd_cov=np.array(mcd[3])
+    mcd_cor=np.array(mcd[6])
+    
+
+    # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_norm.as_matrix()-center).dot(loadings)
     sd_3=pd.DataFrame()
     
+    # # compute SD - Square mahalanobis Distance, for each PCA loading
     for cc in range(0,sc_3.shape[1]):
         sd_3[cc]=sc_3[:,cc]**2/e_vals[cc]
         
-    
+    # # sum the SD's up and take their  sqrt() for the total SD
     sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
     sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
     sd_3['sd_flag']=1
     sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
     
+    # #  compute the PCA sub-space covariance matrix
     num_e_vals=e_vals.shape[0]
     lambda_mat=e_vals*np.identity(num_e_vals)    
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
     
-    feat_vec=which_feature_SD(df3_norm.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
+    # # find the most influential feature for anomalous SD values
+    feat_vec_sd=which_feature_SD(df3_norm.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
+    sd_3['SD_feature']=0
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'SD_feature']=feat_vec_sd
     
-    
+    # # multiply PCA scores by the PCA loadings to get predicted X, "X-hat"
+    # # then, sbtract that from the original data to gat the PCA residuals or Orthogonal Distance, Od
     df3_od=(df3_norm-center)-(loadings.dot(sc_3.T)).T
     sd_3['od_mine']=0
     sd_3['od_mine']=np.sqrt((df3_od**2).sum(axis=1))
     sd_3['od_flag']=1
     sd_3.loc[sd_3.od_mine>OD_th[0],'od_flag']=0
-#    feat_vec0=np.repeat(0,df_clean.shape[1])
-#    feat_list=list()
-#    i=0
-#    feat_vec1=feat_vec0
-#    for n in range(0,df_c_n.shape[1]):
-#        feat_vec1[i]=1
-#        print(feat_vec1)
-#        denom=feat_vec1.dot(pca_cov).dot(feat_vec1.T)
-#        numer=feat_vec1.dot(pca_cov).dot(df_c_n.iloc[0].values)
-#        feat_list.append(numer**2/denom  )
-#        feat_vec1[i]=0
-#        i+=1
-#    
-    
+    # # find the most influential feature for anomalous OD values
+    feat_vec_od=which_feature_OD(df3_od.loc[sd_3.od_mine>OD_th[0],:])
+    sd_3['OD_feature']=0
+    sd_3.loc[sd_3.od_mine>OD_th[0],'OD_feature']=feat_vec_od
    
+    df['SD']=sd_3.sd_mine
+    df['SD_anomaly']=False
+    df.loc[sd_3.sd_flag==0,'SD_anomaly']=True
+    df['SD_feature']=False
+    df.loc[sd_3.SD_feature!=0,'SD_feature']=feat_vec_sd
+    df['OD']=sd_3.sd_mine
+    df['OD_anomaly']=False
+    df.loc[sd_3.sd_flag==0,'OD_anomaly']=True
+    df['OD_feature']=False
+    df.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
+    
 
-#    time_df_c_n=timeit.default_timer()
-#    rpca=rospca.robpca(x=df_c_n.as_matrix(),mcd=True)
-#    elapsed_df_c_n=timeit.default_timer()-time_df_c_n
-#    
-#    time_df_clean=timeit.default_timer()
-#    rpca=rospca.robpca(x=df_clean.as_matrix(),mcd=True)
-#    elapsed_df_clean=timeit.default_timer()-time_df_clean
-#    
+    # # find df_clean index that was used for mcd
+    mcd_index=df_clean.iloc[H1==1].index.values
     
-#    time_df3=timeit.default_timer()
-#    rpca=rospca.robpca(x=df3.as_matrix(),mcd=True)
-#    elapsed_df3=timeit.default_timer()-time_df3
-#    
-#    time_df3_norm=timeit.default_timer()
-#    rpca=rospca.robpca(x=df3_norm.as_matrix(),mcd=True)
-#    elapsed_df3_norm=timeit.default_timer()-time_df3_norm
-#    
+    mcd_serv=df.loc[mcd_index,'service'].value_counts()/len(mcd_index)
+    serv_jsd=jsd(serv_freq,mcd_serv)
+    for idd in serv_jsd.index.values:
+        df.loc[df.service==idd,'serv_jsd']= serv_jsd.loc[idd]  
     
+    mcd_history=df.loc[mcd_index,'history'].value_counts()/len(mcd_index)
+    history_jsd=jsd(history_freq,mcd_history)
+    for idd in history_jsd.index.values:
+        df.loc[df.history==idd,'history_jsd']= history_jsd.loc[idd]  
     
+    mcd_conn_state=df.loc[mcd_index,'conn_state'].value_counts()/len(mcd_index)
+    conn_state_jsd=jsd(conn_state_freq,mcd_conn_state)
+    for idd in conn_state_jsd.index.values:
+        df.loc[df.conn_state==idd,'conn_state_jsd']= conn_state_jsd.loc[idd]  
     
+    df32=df[df_feature_cols2]
+    df_clean2=df32[~df32.index.isin(dirty_flws)]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     dfh_h0=df.iloc[H0-1]
     df_clean["mcd"]=False
     for hh in H0:
@@ -337,7 +388,14 @@ for index in range(intervals):
                                                     ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
                                                     ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
                                                     ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
-                                                    ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]}})
+                                                    ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
+                                                    ,'SD':df.loc[df._id==idd,'SD'].values[0]
+                                                    ,'SD_anomaly':df.loc[df._id==idd,'SD_anomaly'].values[0]
+                                                    ,'SD_feature':df.loc[df._id==idd,'SD_feature'].values[0]
+                                                    ,'OD':df.loc[df._id==idd,'OD'].values[0]
+                                                    ,'OD_anomaly':df.loc[df._id==idd,'OD_anomaly'].values[0]
+                                                    ,'OD_feature':df.loc[df._id==idd,'OD_feature'].values[0]
+                                                    }})
     bulk.execute()   
     elapsed_bulk=timeit.default_timer()-time_bulk
     
@@ -388,6 +446,5 @@ for index in range(intervals):
 #    
 
 #    
-#    skpca=decomposition.PCA(df_norm)
 
   
