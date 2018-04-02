@@ -121,7 +121,15 @@ def robust_f_c_param(n,p,h):
     c2=sci.stats.chi2.cdf(c1,df=p+2)
     return c2/h
 
-
+def which_feature_SD(df_row,pca_cov):
+    numer2=pca_cov.dot(df_row.T)
+    feat_list_x=list()
+    for n in range(0,numer2.shape[1]):
+        feat_list_i=list()
+        for ni in range(0,numer2.shape[0]):
+            feat_list_i.append(numer2[ni][n]**2/pca_cov[ni][ni] )
+        feat_list_x.append(df_row.columns[feat_list_i.index(max(feat_list_i))])
+    return feat_list_x
 
 
 #intervals=round(finish/interval_size)
@@ -223,76 +231,94 @@ for index in range(intervals):
         outly_th=0.25*(df_cnt-outly_flws)
         if num_sum-outly_flws<outly_th:
             break
-    rpy2.robjects.numpy2ri.activate()
-    rospca=importr("rospca")
-    robust_base=importr("robustbase")
+    
     for ppn in outly_pairs:
         # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
         df_clean=df2[~df2.index.isin(gdict[ppn].values)]
         df_clean=df_clean[df_feature_cols]
         df_clean=df_clean.fillna(0)
     
-    df3=df[df_feature_cols]
-    df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
+    df3=df[df_feature_cols]
+    df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
+    dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
+    
     df_mat=df_c_n.as_matrix()
-    rpca=rospca.robpca(x=df_mat,mcd=True)
+    
+    rpy2.robjects.numpy2ri.activate()
+    rospca=importr("rospca")
+    rpca=rospca.robpca(x=df_mat,mcd=True,ndir=5000)
     loadings=np.array(rpca[0])
     e_vals=np.array(rpca[1])
-    center=np.array(rpca[3])
     scores=np.array(rpca[2])
+    center=np.array(rpca[3])
     H0=np.array(rpca[5])
     H1=np.array(rpca[6])
     SD=np.array(rpca[9])
+    OD=np.array(rpca[10])
+    SD_th=np.array(rpca[11])
+    OD_th=np.array(rpca[12])
+    SD_flag=np.array(rpca[13])
+    OD_flag=np.array(rpca[14])
    
-    sc_mine=(df_mat[:5]-center).dot(loadings)
-    sd_mine=list()
-    for scc in sc_mine:
-        i=0
-        sdi=0
-        for scx in scc:
-            sdi+=(scx**2)/e_vals[i]
-            i+=1
-        sd_mine.append(math.sqrt(sdi))
+    
+    sc_3=(df3_norm.as_matrix()-center).dot(loadings)
+    sd_3=pd.DataFrame()
+    
+    for cc in range(0,sc_3.shape[1]):
+        sd_3[cc]=sc_3[:,cc]**2/e_vals[cc]
+        
+    
+    sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
+    sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
+    sd_3['sd_flag']=1
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
     
     num_e_vals=e_vals.shape[0]
     lambda_mat=e_vals*np.identity(num_e_vals)    
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
-    feat_vec0=np.repeat(0,df_clean.shape[1])
-    feat_list=list()
-    i=0
-    feat_vec1=feat_vec0
-    for n in range(0,df_c_n.shape[1]):
-        feat_vec1[i]=1
-        print(feat_vec1)
-        denom=feat_vec1.dot(pca_cov).dot(feat_vec1.T)
-        numer=feat_vec1.dot(pca_cov).dot(df_c_n.iloc[0].values)
-        feat_list.append(numer**2/denom  )
-        feat_vec1[i]=0
-        i+=1
+    
+    feat_vec=which_feature_SD(df3_norm.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
     
     
-    pca_df_c=PCA(df_clean)
-    e_vals=pca_df_c.eigenvals
-    e_vecs=pca_df_c.eigenvecs
+    df3_od=(df3_norm-center)-(loadings.dot(sc_3.T)).T
+    sd_3['od_mine']=0
+    sd_3['od_mine']=np.sqrt((df3_od**2).sum(axis=1))
+    sd_3['od_flag']=1
+    sd_3.loc[sd_3.od_mine>OD_th[0],'od_flag']=0
+#    feat_vec0=np.repeat(0,df_clean.shape[1])
+#    feat_list=list()
+#    i=0
+#    feat_vec1=feat_vec0
+#    for n in range(0,df_c_n.shape[1]):
+#        feat_vec1[i]=1
+#        print(feat_vec1)
+#        denom=feat_vec1.dot(pca_cov).dot(feat_vec1.T)
+#        numer=feat_vec1.dot(pca_cov).dot(df_c_n.iloc[0].values)
+#        feat_list.append(numer**2/denom  )
+#        feat_vec1[i]=0
+#        i+=1
+#    
+    
+   
 
-    time_df_c_n=timeit.default_timer()
-    rpca=rospca.robpca(x=df_c_n.as_matrix(),mcd=True)
-    elapsed_df_c_n=timeit.default_timer()-time_df_c_n
+#    time_df_c_n=timeit.default_timer()
+#    rpca=rospca.robpca(x=df_c_n.as_matrix(),mcd=True)
+#    elapsed_df_c_n=timeit.default_timer()-time_df_c_n
+#    
+#    time_df_clean=timeit.default_timer()
+#    rpca=rospca.robpca(x=df_clean.as_matrix(),mcd=True)
+#    elapsed_df_clean=timeit.default_timer()-time_df_clean
+#    
     
-    time_df_clean=timeit.default_timer()
-    rpca=rospca.robpca(x=df_clean.as_matrix(),mcd=True)
-    elapsed_df_clean=timeit.default_timer()-time_df_clean
-    
-    
-    time_df3=timeit.default_timer()
-    rpca=rospca.robpca(x=df3.as_matrix(),mcd=True)
-    elapsed_df3=timeit.default_timer()-time_df3
-    
-    time_df3_norm=timeit.default_timer()
-    rpca=rospca.robpca(x=df3_norm.as_matrix(),mcd=True)
-    elapsed_df3_norm=timeit.default_timer()-time_df3_norm
-    
+#    time_df3=timeit.default_timer()
+#    rpca=rospca.robpca(x=df3.as_matrix(),mcd=True)
+#    elapsed_df3=timeit.default_timer()-time_df3
+#    
+#    time_df3_norm=timeit.default_timer()
+#    rpca=rospca.robpca(x=df3_norm.as_matrix(),mcd=True)
+#    elapsed_df3_norm=timeit.default_timer()-time_df3_norm
+#    
     
     
     
@@ -323,10 +349,7 @@ for index in range(intervals):
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
     collection_pcap.update_many({'_id': {'$in': mcd_lst}},{'$set':{'mcd':True}})
     
-    df_mcd=pd.DataFrame(mcd_cor)
-    df_mcd.columns=df_clean.columns[:-1]
-    mcd_js=df_mcd.to_json()
-    mcd_dict=json.loads(mcd_js)
+    
     llp=json.dumps(outly_pairs)
     
     collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'mcd_cor':mcd_dict,'outlying_pairs':llp}},upsert=False)
@@ -363,31 +386,8 @@ for index in range(intervals):
 #            k_v+=1
 #            sum_e_vals+=vv
 #    
-#    test_df_proj_1=(df_norm.iloc[:5,]).values.dot(e_vecs.iloc[:,:5])
-#    test_df_proj_2=(df_clean.iloc[:5,]-df_clean.mean()).values.dot(e_vecs.iloc[:,:5])
-#    project=pca_df_c.project(ncomp=k_v,transform=False)
-#    u,s,v=np.linalg.svd(df_norm)
+
 #    
 #    skpca=decomposition.PCA(df_norm)
 
-#    collection_pcap.update_many({'orig_pkts_intr':{'$exists':True}},{'$unset':{'orig_pkts_intr':''}},upsert=False)
-#    
-#    time_single=timeit.default_timer()
-#    doc_idd=collection_pcap.find({'_id':{'$in':bin_lst}})
-#    for idd in doc_idd:
-#        collection_pcap.update_one({'_id':idd['_id']},{'$set':{'orig_pkts_intr':df.loc[df._id==idd['_id'],'orig_pkts_intr'].values[0]}})
-#    elapsed_single=timeit.default_timer()-time_single    
-#    gb=df.groupby(['id_orig_h','id_resp_h'])
-#    ggtsdf=list()
-#    gdict=gb.groups
-#    for ss in gb.groups:
-#        gtemp=gb.get_group(ss)
-#        if gtemp.ts.count()<2:
-#            ggtsdf.append(0)
-#            df.iloc[gdict[ss].values,34]=0
-#            continue
-#        gtsdf=gtemp.ts.diff()
-#        gtsdfmd=gtsdf.median()
-#        ggtsdf.append(gtsdfmd)
-#        df.iloc[gdict[ss].values,34]=gtsdfmd
-#    ts_dict=dict(zip(gdict.keys(),ggtsdf)) 
+  
