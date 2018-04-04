@@ -241,9 +241,9 @@ for index in range(intervals):
     num_sum=op_df.num.sum()
     outly_flws=0
     outly_pairs=list()
-    for nn in op_df.num:
-        outly_flws+=nn
-        outly_pairs.append(op_df.loc[op_df.num==nn].index[0])
+    for nn in op_df.index:
+        outly_flws+=float(op_df.loc[op_df.index==nn].num)
+        outly_pairs.append(nn)
         # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
         outly_th=0.25*(df_cnt-outly_flws)
         if num_sum-outly_flws<outly_th:
@@ -251,9 +251,10 @@ for index in range(intervals):
     msg='finish looking for bad flows. Line264: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
+    df_clean=df2.copy()
     for ppn in outly_pairs:
         # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-        df_clean=df2[~df2.index.isin(gdict[ppn].values)]
+        df_clean=df_clean[~df_clean.index.isin(gdict[ppn].values)]
         df_clean=df_clean[df_feature_cols]
         df_clean=df_clean.fillna(0)
     
@@ -494,7 +495,7 @@ for index in range(intervals):
                                                     ,'OD_feature2':json_bool(df.loc[df._id==idd,'OD_feature2'].values[0])
                                                     }})
     )
-        if (len(write_list)%500==0):
+        if (len(write_list)%100==0):
             collection_pcap.bulk_write(write_list,ordered=False)
             write_list=list() 
             msg='wrote bulk to mongo. Line513: directory= '+pcap_dir+':index='+str(index)+': write_list size:'+str(len(write_list))
