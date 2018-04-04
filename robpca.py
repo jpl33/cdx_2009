@@ -1,16 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Jan 16 09:53:31 2018
-
-@author: root
-
-"""
-
-
-# coding: utf-8
-
-# In[2]:
-
 
 # -*- coding: utf-8 -*-
 import pandas as pd
@@ -83,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -471,7 +458,7 @@ for index in range(intervals):
     bin_lst=list(df._id)
     #mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
     
-    df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+":"+str(index)+'.csv'))
+    df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+str(index)+'.csv'))
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
     msg='start bulk write to mongo. Line477: directory= '+pcap_dir+':index='+str(index)
@@ -520,6 +507,10 @@ for index in range(intervals):
     
     
     llp=json.dumps(outly_pairs)
+    
+    
+    first_ts+=time_interval
+    
     
     collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp}},upsert=False)
     msg='finished processing bin. Line513: directory= '+pcap_dir+':index='+str(index)
