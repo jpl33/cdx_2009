@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -144,10 +144,12 @@ def jsd(df,mcd):
 
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
+
+#df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 
-df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
+
+df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -255,11 +257,11 @@ for index in range(intervals):
     for ppn in outly_pairs:
         # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
         df_clean=df_clean[~df_clean.index.isin(gdict[ppn].values)]
-        df_clean=df_clean[df_feature_cols]
+        df_clean=df_clean[df_feature_cols2]
         df_clean=df_clean.fillna(0)
     
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
-    df3=df[df_feature_cols]
+    df3=df[df_feature_cols2]
     df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
     dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
     
@@ -473,6 +475,7 @@ for index in range(intervals):
     for idd in bin_lst:
         write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
                                                     ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
+                                                    ,'cumultv_pkt_count':df.loc[df._id==idd,'cumultv_pkt_count'].values[0]
                                                     ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
                                                     ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
                                                     ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
