@@ -176,4 +176,4 @@ for dd in [mean_list,std_list]:
     df_dd.columns=df_eda_cols[1:]
     df_eda.append(df_dd)
     
-print(df_eda)
+df_eda.to_csv("df_eda.csv")

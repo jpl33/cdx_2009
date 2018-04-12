@@ -67,7 +67,7 @@ def  base_conn_stats(df):
      return sum_t
     
 #home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -179,15 +179,6 @@ for index in range(intervals):
 
 
 
-
-    # # get all other tcp flows tha do NOT have tcp-level byte exchange (why?)
-#    df3=df[~df.index.isin(df2.index.values)]
-#    sum3_t=base_conn_stats(df3)
-#    df_dict3=json.loads(sum3_t.to_json())
-#    df_jsn['conn_null']=df_dict3
-#    df3_atk_cn=df3[df3.attack_bool==True]
-#    df3_atk_cn_jsn=base_conn_stats(df3_atk_cn)
-#    df_attk['conn_null']=json.loads(df3_atk_cn_jsn.to_json())
     
     for nm in srv_cnt:
 ###     
@@ -227,7 +218,10 @@ for index in range(intervals):
                 srv_dfs[ssrv]=sum_t.to_json()
                 srv_atk_jsn=base_conn_stats(srv_atk)
                 df_attk[ssrv]=json.loads(srv_atk_jsn.to_json())
-                srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
+                if index==intervals-1:
+                    srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':last_ts}}]})
+                else:
+                    srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
                 coll_srv_df=pd.DataFrame(list(srv_doc_tt))
                 coll_srv_count=coll_srv_df.shape[0]
                 srv_dict[ssrv]=int(coll_srv_count)

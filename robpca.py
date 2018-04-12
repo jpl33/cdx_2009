@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -141,11 +141,6 @@ def jsd(df,mcd):
     dff['jsd']=dff.loc[:,'kl_df':'kl_mcd'].sum(axis=1)/2
     dff.fillna(0,inplace=True)
     return dff.jsd
-
-#intervals=round(finish/interval_size)
-df_collection = {}
-
-#df_feature_cols=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 
 
@@ -368,82 +363,7 @@ for index in range(intervals):
 #        df.loc[df.conn_state==idd,'conn_state_jsd']= conn_state_jsd.loc[idd]  
     
     
-#    df.fillna(0,inplace=True)
-#    df32=df[df_feature_cols2].copy()
-#    df32.fillna(0,inplace=True)
-#    df_clean2=df32[~df32.index.isin(dirty_flws)]
-#    df_c_n2=(df_clean2-df_clean2.mean() )/df_clean2.std(ddof=0)
-#    df32_n=(df32-df_clean2.mean())/df_clean2.std(ddof=0)
-#    df_c_n2.fillna(0,inplace=True)
-#    df32_n.fillna(0,inplace=True)
-#
-#    msg='start second robpca. Line390: directory= '+pcap_dir+':index='+str(index)
-#    myLogger.error(msg)
-#    
-#    rpca2=rospca.robpca(x=df_c_n2.as_matrix(),mcd=True,ndir=5000)
-#    loadings2=np.array(rpca2[0])
-#    e_vals2=np.array(rpca2[1])
-#    scores2=np.array(rpca2[2])
-#    center2=np.array(rpca2[3])
-#    H02=np.array(rpca2[5])
-#    H12=np.array(rpca2[6])
-#    SD2=np.array(rpca2[9])
-#    OD2=np.array(rpca2[10])
-#    SD_th2=np.array(rpca2[11])
-#    OD_th2=np.array(rpca2[12])
-#    SD_flag2=np.array(rpca2[13])
-#    OD_flag2=np.array(rpca2[14])
-#
-#    # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
-#    sc_32=(df32_n.as_matrix()-center2).dot(loadings2)
-#    sd_32=pd.DataFrame()
-#    
-#    msg='start second OD,SD compute. Line411: directory= '+pcap_dir+':index='+str(index)
-#    myLogger.error(msg)
-#        
-#    # # compute SD - Square mahalanobis Distance, for each PCA loading
-#    for cc in range(0,sc_32.shape[1]):
-#        sd_32[cc]=sc_32[:,cc]**2/e_vals2[cc]
-#        
-#    # # sum the SD's up and take their  sqrt() for the total SD
-#    sd_3['sd_mine2']=sd_32.iloc[:,0:sc_32.shape[1]].sum(axis=1)
-#    sd_3['sd_mine2']=np.sqrt(sd_3['sd_mine2'].values)
-#    sd_3['sd_flag2']=1
-#    sd_3.loc[sd_3.sd_mine2>SD_th2[0],'sd_flag2']=0
-#    
-#    # #  compute the PCA sub-space covariance matrix
-#    num_e_vals2=e_vals2.shape[0]
-#    lambda_mat2=e_vals2*np.identity(num_e_vals2)    
-#    pca_cov2=(loadings2.dot(lambda_mat2)).dot(loadings2.T)
-#    
-#    # # find the most influential feature for anomalous SD values
-#    feat_vec_sd2=which_feature_SD(df32_n.loc[sd_3.sd_mine2>SD_th2[0],:],pca_cov2)
-#    sd_3['SD_feature2']=0
-#    sd_3.loc[sd_3.sd_mine2>SD_th2[0],'SD_feature2']=feat_vec_sd2
-#    
-#    # # multiply PCA scores by the PCA loadings to get predicted X, "X-hat"
-#    # # then, sbtract that from the original data to gat the PCA residuals or Orthogonal Distance, Od
-#    df3_od2=(df32_n-center2)-(loadings2.dot(sc_32.T)).T
-#    sd_3['od_mine2']=0
-#    sd_3['od_mine2']=np.sqrt((df3_od2**2).sum(axis=1))
-#    sd_3['od_flag2']=1
-#    sd_3.loc[sd_3.od_mine2>OD_th2[0],'od_flag2']=0
-#    # # find the most influential feature for anomalous OD values
-#    feat_vec_od2=which_feature_OD(df3_od2.loc[sd_3.od_mine2>OD_th2[0],:])
-#    sd_3['OD_feature2']=0
-#    sd_3.loc[sd_3.od_mine2>OD_th2[0],'OD_feature2']=feat_vec_od2
-#   
-#    df['SD2']=sd_3.sd_mine2
-#    df['SD_anomaly2']=False
-#    df.loc[sd_3.sd_flag2==0,'SD_anomaly2']=True
-#    df['SD_feature2']=False
-#    df.loc[sd_3.SD_feature2!=0,'SD_feature2']=feat_vec_sd2
-#    df['OD2']=sd_3.od_mine2
-#    df['OD_anomaly2']=False
-#    df.loc[sd_3.sd_flag2==0,'OD_anomaly2']=True
-#    df['OD_feature2']=False
-#    df.loc[sd_3.OD_feature2!=0,'OD_feature2']=feat_vec_od2
-    
+
 
 
 
@@ -479,23 +399,13 @@ for index in range(intervals):
                                                     ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
                                                     ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
                                                     ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
-#                                                    ,'serv_jsd':df.loc[df._id==idd,'serv_jsd'].values[0]
-#                                                    ,'history_jsd':df.loc[df._id==idd,'history_jsd'].values[0]
-#                                                    ,'conn_state_jsd':df.loc[df._id==idd,'conn_state_jsd'].values[0]
-                                                   ,'mcd1':json_bool(df.loc[df._id==idd,'mcd1'].values[0])
-#                                                    ,'mcd2':json_bool(df.loc[df._id==idd,'mcd2'].values[0])
+                                                    ,'mcd1':json_bool(df.loc[df._id==idd,'mcd1'].values[0])
                                                     ,'SD':json_bool(df.loc[df._id==idd,'SD'].values[0])
                                                     ,'SD_anomaly':json_bool(df.loc[df._id==idd,'SD_anomaly'].values[0])
                                                     ,'SD_feature':json_bool(df.loc[df._id==idd,'SD_feature'].values[0])
                                                     ,'OD':json_bool(df.loc[df._id==idd,'OD'].values[0])
                                                     ,'OD_anomaly':json_bool(df.loc[df._id==idd,'OD_anomaly'].values[0])
                                                     ,'OD_feature':json_bool(df.loc[df._id==idd,'OD_feature'].values[0])
-#                                                    ,'SD2':json_bool(df.loc[df._id==idd,'SD2'].values[0])
-#                                                    ,'SD_anomaly2':json_bool(df.loc[df._id==idd,'SD_anomaly2'].values[0])
-#                                                    ,'SD_feature2':json_bool(df.loc[df._id==idd,'SD_feature2'].values[0])
-#                                                    ,'OD2':json_bool(df.loc[df._id==idd,'OD2'].values[0])
-#                                                    ,'OD_anomaly2':json_bool(df.loc[df._id==idd,'OD_anomaly2'].values[0])
-#                                                    ,'OD_feature2':json_bool(df.loc[df._id==idd,'OD_feature2'].values[0])
                                                     }})
     )
         if (len(write_list)%500==0):
@@ -508,11 +418,7 @@ for index in range(intervals):
         collection_pcap.bulk_write(write_list,ordered=False)
     
     elapsed_bulk=timeit.default_timer()-time_bulk
-    
-    
-    llp=json.dumps(outly_pairs)
-    
-    
+        
     first_ts+=time_interval
     
     
@@ -523,33 +429,5 @@ for index in range(intervals):
 
 
 
-
-
-
-
-#    projected_df_c=pca_df_c.factors
-#    e_vals_sum=e_vals.sum()
-#    k_v=0
-#    sum_e_vals=0
-#    for vv in e_vals:
-#        if sum_e_vals<0.8*e_vals_sum:
-#            k_v+=1
-#            sum_e_vals+=vv
-#     
-#    proj_df_c=projected_df_c.iloc[:,:k_v]
-#    
-#    df_c_corr=df_norm.cov()
-#    df_c_corr2=np.corrcoef(df_clean,rowvar=False)
-#    dfc_vals,dfc_vecs=np.linalg.eig(df_c_corr2)
-#    sum_dfc_vals=dfc_vals.sum()
-#    k_v=0
-#    sum_e_vals=0
-#    for vv in dfc_vals:
-#        if sum_e_vals<0.8*sum_dfc_vals:
-#            k_v+=1
-#            sum_e_vals+=vv
-#    
-
-#    
 
   
