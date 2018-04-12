@@ -7,6 +7,7 @@
 import pandas as pd
 import math
 import numpy as np
+import scipy as sci
 import json
 import pymongo
 import sys
@@ -97,10 +98,10 @@ for index in range(intervals):
     
     
     if index==intervals-1:
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'orig_bytes':{'$gt':0}}]})
     else:
         # # find from the timestamp, up to the pre-set time interval size
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
     df =  pd.DataFrame(list(doc_tt)) 
     df_cnt=df._id.count()
     
@@ -113,7 +114,7 @@ for index in range(intervals):
 #    df['orig_pkts_intr']=df.orig_pkts/df.duration
 #    df['cumultv_pkt_count']=0
     # # get all flows that have tcp-level byte exchange ("orig_bytes")
-    df2=df[df['orig_bytes']>0].copy()
+    df2=df.copy()
     sum_t=base_conn_stats(df2)
     df_dict=json.loads(sum_t.to_json())
     df_jsn=dict()
@@ -122,6 +123,62 @@ for index in range(intervals):
     df_atk_cn=df2[df2.attack_bool==True]
     df_atk_cn_jsn=base_conn_stats(df_atk_cn)
     df_attk['conn_bin']=json.loads(df_atk_cn_jsn.to_json())
+
+
+
+    
+    msg='start looking for bad flows. Line217'
+    myLogger.error(msg)
+    
+    df2.ts=df2.ts.round()
+    gb=df2.groupby(['id_orig_h','id_resp_h'])
+    ggtsdf=list()
+    gdict=gb.groups
+    # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
+    for ss in gb.groups:
+        gtemp=gb.get_group(ss)
+        df3=gtemp.groupby(['ts']).sum()
+        gtsdf=df3.orig_pkts.median()
+        # # ggtsdf is list of all pairs origin_pkts/second medians
+        ggtsdf.append(gtsdf)
+        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
+        df2.loc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
+        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
+        df.loc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
+    
+    # # series of orig_pkts/sec medians with orig-resp pairs as index    
+    op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
+    iqr=sci.stats.iqr(op_ser)
+    q3=op_ser.quantile(0.75)
+    # # upper threshold for orig-dest cumulative orig_pkts/sec
+    cum_pkt_sec_th=q3+1.5*iqr
+    op_df=pd.DataFrame(op_ser)
+    
+    # # array of all orig-dest orig_pkts/sec medians HIGHER tha the threshold
+    armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
+    for sd in armean:
+        gtemp2=gb.get_group(sd)
+        # # just how many flows of this orig-resp pair are there in this bin
+        op_df.loc[sd,'num']=gtemp2.shape[0]
+    
+    # # sort the dataframe for the highest number of flows, NOT the highest orig_pkts/sec. we want the pair that has the most influence on our data
+    op_df=op_df.sort_values(by='num', ascending = False)
+    # # total number of flows of pairs with orig_pkts/sec higher than the threshold
+    num_sum=op_df.num.sum()
+    outly_flws=0
+    outly_pairs=list()
+    for nn in op_df.index:
+        outly_flws+=float(op_df.loc[op_df.index==nn].num)
+        outly_pairs.append(nn)
+        # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
+        outly_th=0.25*(df_cnt-outly_flws)
+        if num_sum-outly_flws<outly_th:
+            break
+    msg='finish looking for bad flows. Line264: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
+
+
+
 
     # # get all other tcp flows tha do NOT have tcp-level byte exchange (why?)
 #    df3=df[~df.index.isin(df2.index.values)]
@@ -193,6 +250,7 @@ for index in range(intervals):
     df_jsn['real']=srv_dict
     df_jsn['index']=index
     df_jsn['attack']=df_attk
+    df_jsn['outlying_pairs']=json.dumps(outly_pairs)
     
     try:
         collection_bins.insert_one(df_jsn)

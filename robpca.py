@@ -516,9 +516,6 @@ for index in range(intervals):
     first_ts+=time_interval
     
     
-    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp}},upsert=False)
-    msg='finished processing bin. Line513: directory= '+pcap_dir+':index='+str(index)
-    myLogger.error(msg)
     
     
 #    mcd_df2=pd.read_json(json.dumps(mcd_dict))
