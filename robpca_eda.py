@@ -113,7 +113,7 @@ def jsd(df,mcd):
 #intervals=round(finish/interval_size)
 df_eda=pd.DataFrame()
 
-df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
+jdf_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 for pp in pcap_dirs:
 
@@ -147,7 +147,6 @@ for pp in pcap_dirs:
                             index,
                             df_cnt,
                             df.loc[df.attack_bool==True].shape[0],
-                            df.loc[df.mcd1=='true'].shape[0],   
                             df.loc[df.mcd1=='true'].shape[0],
                             df.loc[(df.mcd1=='true') & (df.attack_bool==True)].shape[0],
                             df.loc[(df.mcd1=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
@@ -165,7 +164,8 @@ for pp in pcap_dirs:
         df_eda=df_eda.append(df_r1)
         first_ts+=time_interval
 
-df_eda.iloc[:,1:]=df_eda.iloc[:,1:].astype(float)
+#df_eda.iloc[:,1:]=df_eda.iloc[:,1:].astype(float)
+for cc in df_eda.iloc[:,1:]: df_eda[cc]=df_eda[cc].astype(float)
 desc_list=[df_eda[cc].describe() for cc in df_eda.iloc[:,1:]]
 mean_list=[mm['mean'] for mm in desc_list]
 std_list=[mm['std'] for mm in desc_list]
