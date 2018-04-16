@@ -77,7 +77,11 @@ finish=collection_pcap.count()
 time_interval=180
 #intervals=round(finish/interval_size)
 df_collection = {}
-df_feature_cols2=['attack_bool','duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
+
+df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
+
+
+#df_feature_cols2=['attack_bool','duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 # In[ ]:
 from IPython.core.debugger import Pdb; 
@@ -127,55 +131,55 @@ for index in range(intervals):
 
 
     
-    msg='start looking for bad flows. Line217'
-    myLogger.error(msg)
-    
-    df2.ts=df2.ts.round()
-    gb=df2.groupby(['id_orig_h','id_resp_h'])
-    ggtsdf=list()
-    gdict=gb.groups
-    # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
-    for ss in gb.groups:
-        gtemp=gb.get_group(ss)
-        df3=gtemp.groupby(['ts']).sum()
-        gtsdf=df3.orig_pkts.median()
-        # # ggtsdf is list of all pairs origin_pkts/second medians
-        ggtsdf.append(gtsdf)
-        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
-        df2.loc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
-        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
-        df.loc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
-    
-    # # series of orig_pkts/sec medians with orig-resp pairs as index    
-    op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
-    iqr=sci.stats.iqr(op_ser)
-    q3=op_ser.quantile(0.75)
-    # # upper threshold for orig-dest cumulative orig_pkts/sec
-    cum_pkt_sec_th=q3+1.5*iqr
-    op_df=pd.DataFrame(op_ser)
-    
-    # # array of all orig-dest orig_pkts/sec medians HIGHER tha the threshold
-    armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
-    for sd in armean:
-        gtemp2=gb.get_group(sd)
-        # # just how many flows of this orig-resp pair are there in this bin
-        op_df.loc[sd,'num']=gtemp2.shape[0]
-    
-    # # sort the dataframe for the highest number of flows, NOT the highest orig_pkts/sec. we want the pair that has the most influence on our data
-    op_df=op_df.sort_values(by='num', ascending = False)
-    # # total number of flows of pairs with orig_pkts/sec higher than the threshold
-    num_sum=op_df.num.sum()
-    outly_flws=0
-    outly_pairs=list()
-    for nn in op_df.index:
-        outly_flws+=float(op_df.loc[op_df.index==nn].num)
-        outly_pairs.append(nn)
-        # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
-        outly_th=0.25*(df_cnt-outly_flws)
-        if num_sum-outly_flws<outly_th:
-            break
-    msg='finish looking for bad flows. Line264: directory= '+pcap_dir+':index='+str(index)
-    myLogger.error(msg)
+#    msg='start looking for bad flows. Line217'
+#    myLogger.error(msg)
+#    
+#    df2.ts=df2.ts.round()
+#    gb=df2.groupby(['id_orig_h','id_resp_h'])
+#    ggtsdf=list()
+#    gdict=gb.groups
+#    # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
+#    for ss in gb.groups:
+#        gtemp=gb.get_group(ss)
+#        df3=gtemp.groupby(['ts']).sum()
+#        gtsdf=df3.orig_pkts.median()
+#        # # ggtsdf is list of all pairs origin_pkts/second medians
+#        ggtsdf.append(gtsdf)
+#        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
+#        df2.loc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
+#        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
+#        df.loc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
+#    
+#    # # series of orig_pkts/sec medians with orig-resp pairs as index    
+#    op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
+#    iqr=sci.stats.iqr(op_ser)
+#    q3=op_ser.quantile(0.75)
+#    # # upper threshold for orig-dest cumulative orig_pkts/sec
+#    cum_pkt_sec_th=q3+1.5*iqr
+#    op_df=pd.DataFrame(op_ser)
+#    
+#    # # array of all orig-dest orig_pkts/sec medians HIGHER tha the threshold
+#    armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
+#    for sd in armean:
+#        gtemp2=gb.get_group(sd)
+#        # # just how many flows of this orig-resp pair are there in this bin
+#        op_df.loc[sd,'num']=gtemp2.shape[0]
+#    
+#    # # sort the dataframe for the highest number of flows, NOT the highest orig_pkts/sec. we want the pair that has the most influence on our data
+#    op_df=op_df.sort_values(by='num', ascending = False)
+#    # # total number of flows of pairs with orig_pkts/sec higher than the threshold
+#    num_sum=op_df.num.sum()
+#    outly_flws=0
+#    outly_pairs=list()
+#    for nn in op_df.index:
+#        outly_flws+=float(op_df.loc[op_df.index==nn].num)
+#        outly_pairs.append(nn)
+#        # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
+#        outly_th=0.25*(df_cnt-outly_flws)
+#        if num_sum-outly_flws<outly_th:
+#            break
+#    msg='finish looking for bad flows. Line264: directory= '+pcap_dir+':index='+str(index)
+#    myLogger.error(msg)
 
 
 
