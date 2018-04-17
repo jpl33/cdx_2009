@@ -67,7 +67,7 @@ def json_bool(obj):
 
 
 
-pcap_dirs= ['maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']
+pcap_dirs= ['maccdc2012_00001','maccdc2012_00002']#,'maccdc2012_00003','maccdc2012_00004']
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -129,7 +129,7 @@ for pp in pcap_dirs:
     for dd in last_doc: last_ts=dd['ts']
     
     intervals=math.floor((last_ts-first_ts)/time_interval)
-    df_eda_cols=['collection','bin','count','attack_bool_count','mcd1','mcd1_attack','mcd1_attack_pcnt','SD_anomaly','SD_anomaly_attacks','SD_anomaly_attacks_pcnt','SD_anomaly_attacks_TP','OD_anomaly','OD_anomaly_attacks','OD_anomaly_attacks_pcnt','OD_anomaly_attacks_TP']
+    df_eda_cols=['collection','bin','count','attack_bool_count','mcd2','mcd2_attack_pcnt','SD_anomaly','SD_anomaly_attacks_pcnt','SD_anomaly_attacks_TP','SD2_anomaly','SD2_anomaly_attacks_pcnt','SD2_anomaly_attacks_TP','OD_anomaly','OD_anomaly_attacks_pcnt','OD_anomaly_attacks_TP','OD2_anomaly','OD2_anomaly_attacks_pcnt','OD2_anomaly_attacks_TP']
     
     for index in range(intervals):
 
@@ -147,17 +147,20 @@ for pp in pcap_dirs:
                             index,
                             df_cnt,
                             df.loc[df.attack_bool==True].shape[0],
-                            df.loc[df.mcd1=='true'].shape[0],
-                            df.loc[(df.mcd1=='true') & (df.attack_bool==True)].shape[0],
-                            df.loc[(df.mcd1=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                            df.loc[df.mcd2=='true'].shape[0],
+                            df.loc[(df.mcd2=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[df.SD_anomaly=='true'].shape[0],
-                            df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0],
                             df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD_anomaly=='true'].shape[0],
+                            df.loc[df.SD2_anomaly=='true'].shape[0],
+                            df.loc[(df.SD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                            df.loc[(df.SD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD2_anomaly=='true'].shape[0],
                             df.loc[df.OD_anomaly=='true'].shape[0],
-                            df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0],
+                            df.loc[df.OD2_anomaly=='true'].shape[0],
+                            df.loc[(df.OD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                            df.loc[(df.OD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD2_anomaly=='true'].shape[0],
                             ])
         df_r1=pd.DataFrame(df_s1).T
         df_r1.columns=df_eda_cols

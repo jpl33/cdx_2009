@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -372,16 +372,16 @@ for index in range(intervals):
     df_c21=df_clean2.loc[:,~df_clean2.columns.isin(jsd_lst)]
     df_c22=df_clean2.loc[:,df_clean2.columns.isin(jsd_lst)]
     
-    df_c21=(df_c21-df_c21.mean())/df_c21.std(ddof=0)
-    df_c22=(df_c22-df_c22.min())/(df_c22.max()-df_c22.min())
-    df_c_n2=pd.concat([df_c21,df_c22],axis=1)
+    df_c21_n=(df_c21-df_c21.mean())/df_c21.std(ddof=0)
+    df_c22_n=(df_c22-df_c22.min())/(df_c22.max()-df_c22.min())
+    df_c_n2=pd.concat([df_c21_n,df_c22_n],axis=1)
     
     df_321=df32.loc[:,~df_clean2.columns.isin(jsd_lst)]
     df_322=df32.loc[:,df_clean2.columns.isin(jsd_lst)]
     
-    df_321=(df_321-df_c21.mean())/df_c21.std(ddof=0)
-    df_322=(df_322-df_c22.min())/(df_c22.max()-df_c22.min())
-    df32_n=pd.concat([df_321,df_322],axis=1)
+    df_321_n=(df_321-df_c21.mean())/df_c21.std(ddof=0)
+    df_322_n=(df_322-df_c22.min())/(df_c22.max()-df_c22.min())
+    df32_n=pd.concat([df_321_n,df_322_n],axis=1)
     
     #df32_n=(df32-df_clean2.mean())/df_clean2.std(ddof=0)
     df_c_n2.fillna(0,inplace=True)
