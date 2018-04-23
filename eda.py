@@ -64,10 +64,11 @@ def  base_conn_stats(df):
      dcc=df[df['attack_bool']==True]
      dcc=dcc.shape[0]  
      sum_t.loc['count','attack_bool']=dcc
+     sum_t.loc['count','id_orig_count']=len(df.id_orig_h.value_counts().index.values)
      return sum_t
     
 #home_dir='D:\\personal\\msc\\maccdc_2012\\'
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00004'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -78,7 +79,7 @@ time_interval=180
 #intervals=round(finish/interval_size)
 df_collection = {}
 
-df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
+df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 
 #df_feature_cols2=['attack_bool','duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
@@ -110,9 +111,8 @@ for index in range(intervals):
     df_cnt=df._id.count()
     
     # # get the count of different 'service' flags 
-    srv_cnt= df['service'].value_counts()
+    srv_lst= list(df['service'].value_counts().index.values)
     srv_dict={}
-    srv_dfs={}
     
     
 #    df['orig_pkts_intr']=df.orig_pkts/df.duration
@@ -131,71 +131,14 @@ for index in range(intervals):
 
 
     
-#    msg='start looking for bad flows. Line217'
-#    myLogger.error(msg)
-#    
-#    df2.ts=df2.ts.round()
-#    gb=df2.groupby(['id_orig_h','id_resp_h'])
-#    ggtsdf=list()
-#    gdict=gb.groups
-#    # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
-#    for ss in gb.groups:
-#        gtemp=gb.get_group(ss)
-#        df3=gtemp.groupby(['ts']).sum()
-#        gtsdf=df3.orig_pkts.median()
-#        # # ggtsdf is list of all pairs origin_pkts/second medians
-#        ggtsdf.append(gtsdf)
-#        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
-#        df2.loc[gdict[ss].values,df2.columns.get_loc('cumultv_pkt_count')]=gtsdf
-#        # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
-#        df.loc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
-#    
-#    # # series of orig_pkts/sec medians with orig-resp pairs as index    
-#    op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
-#    iqr=sci.stats.iqr(op_ser)
-#    q3=op_ser.quantile(0.75)
-#    # # upper threshold for orig-dest cumulative orig_pkts/sec
-#    cum_pkt_sec_th=q3+1.5*iqr
-#    op_df=pd.DataFrame(op_ser)
-#    
-#    # # array of all orig-dest orig_pkts/sec medians HIGHER tha the threshold
-#    armean=op_ser.loc[op_ser>(cum_pkt_sec_th)].index
-#    for sd in armean:
-#        gtemp2=gb.get_group(sd)
-#        # # just how many flows of this orig-resp pair are there in this bin
-#        op_df.loc[sd,'num']=gtemp2.shape[0]
-#    
-#    # # sort the dataframe for the highest number of flows, NOT the highest orig_pkts/sec. we want the pair that has the most influence on our data
-#    op_df=op_df.sort_values(by='num', ascending = False)
-#    # # total number of flows of pairs with orig_pkts/sec higher than the threshold
-#    num_sum=op_df.num.sum()
-#    outly_flws=0
-#    outly_pairs=list()
-#    for nn in op_df.index:
-#        outly_flws+=float(op_df.loc[op_df.index==nn].num)
-#        outly_pairs.append(nn)
-#        # # are the flows of the rest of the pairs less than 25% of available flows? if so, they won't affect the MCD.
-#        outly_th=0.25*(df_cnt-outly_flws)
-#        if num_sum-outly_flws<outly_th:
-#            break
-#    msg='finish looking for bad flows. Line264: directory= '+pcap_dir+':index='+str(index)
-#    myLogger.error(msg)
-
-
 
     
-    for nm in srv_cnt:
-###     
-###     if the service connections are more than 20% of all connections in the current sample
-###     slice the current sample according to service  
-        if nm>80:
-            # # get the service name
-            srv_nm=srv_cnt[srv_cnt==nm].index[0]
-            
+    for nm in srv_lst:
+           
         # # get the service names if it's a compound service
-            srv_lst=srv_nm.split(',')
+            srv_nm_lst=nm.split(',')
             # # only get service name if it's in our service list
-            srv_lstrd=[ssr for ssr in srv_lst if ssr in vuln_service.keys()]
+            srv_lstrd=[ssr for ssr in srv_nm_lst if ssr in vuln_service.keys()]
 
             for ssrv in srv_lstrd: 
                 
@@ -204,37 +147,26 @@ for index in range(intervals):
                     coll_srv=get_db()[pcap_dir+'_'+ssrv]
                 
                 except Exception as e:
-                    error=str(e)+':service name='+str(ssrv)+':collection_conn='+str(pcap_dir+'_conn')+':index='+str(i)
+                    error=str(e)+':service name='+str(ssrv)+':collection_conn='+str(pcap_dir+'_conn')+':index='+str(index)
                     myLogger.error(error)
                     continue
-                d1=df[(df.service==srv_nm)&(df.orig_bytes>0)]
 ###            the service name is the index of 'srv_cnt', 
 ###     here we are actually creating a dictionary of services
 ###        and their counts in the  current sample - 'srv_dict'
         # # create new service data Frame
-                srv_dfs[ssrv]=d1[df_feature_cols2]
-                sl=srv_dfs[ssrv].describe()
-                st=pd.DataFrame(sl)
-                dcc=d1[d1['attack_bool']==True]
-                dcc=dcc.shape[0]  
-                sum_t.loc['count','attack_bool']=dcc
-                srv_atk=srv_dfs[ssrv][srv_dfs[ssrv].attack_bool==True]
-                srv_dfs[ssrv]=sum_t.to_json()
-                srv_atk_jsn=base_conn_stats(srv_atk)
-                df_attk[ssrv]=json.loads(srv_atk_jsn.to_json())
                 if index==intervals-1:
                     srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':last_ts}}]})
                 else:
                     srv_doc_tt=coll_srv.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
                 coll_srv_df=pd.DataFrame(list(srv_doc_tt))
-                coll_srv_count=coll_srv_df.shape[0]
-                srv_dict[ssrv]=int(coll_srv_count)
+                if coll_srv_df.empty:
+                    coll_srv_count=0
+                    coll_orig_h_count=0
+                else:
+                    coll_srv_count=coll_srv_df.shape[0]
+                    coll_orig_h_count=len(coll_srv_df.id_orig_h.value_counts().index.values)
+                srv_dict[ssrv]=[int(coll_srv_count),coll_orig_h_count]
                 
-                
-        
-    for dd in srv_dfs.keys():
-        ddjn=json.loads(srv_dfs[dd])
-        df_jsn[dd]=ddjn
     
     
     df_jsn['first_ts']=first_ts
@@ -248,7 +180,6 @@ for index in range(intervals):
     df_jsn['real']=srv_dict
     df_jsn['index']=index
     df_jsn['attack']=df_attk
-    df_jsn['outlying_pairs']=json.dumps(outly_pairs)
     
     try:
         collection_bins.insert_one(df_jsn)
