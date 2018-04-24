@@ -79,7 +79,7 @@ def main():
 
 ###    take the pcap directory, and look up the matching <pcap_dir_conn> collection in mogo db
     #for pcap_dir in dl:
-    pcap_dir='maccdc2012_00002'
+    pcap_dir='maccdc2012_00005'
 
     coll_name=pcap_dir+'_http'
     try:
@@ -102,6 +102,7 @@ def main():
     doc_tt=collection_http.find({'method':'POST'},sort=[('ts',1)])
     df_post=pd.DataFrame(list(doc_tt))
     df_post['post_content']=''
+    df_post['post_state']='empty'
     with open(home_dir +fl_lst_pc[0],'r') as post_file:
         data = json.load(post_file)
         for dd in data:
@@ -118,8 +119,12 @@ def main():
                 error='could not find http POST request:'+str(uid)
                 myLogger.error(error)
             else:
-                df_post.loc[df_post._id==doc._id.values[0],'post_content']=post_content
-                collection_http.update_one({'_id':doc['_id'].values[0]},{'$set':{'post_content':post_content}})
+                for ddf in doc.iterrows():
+                    if ddf[1]['post_state']=='empty':
+                        df_post.loc[df_post._id==ddf[1]['_id'],'post_content']=post_content
+                        df_post.loc[df_post._id==ddf[1]['_id'],'post_state']='full'
+                        collection_http.update_one({'_id':ddf[1]['_id']},{'$set':{'post_content':post_content}})
+                        break
         empty=df_post.loc[df_post.post_content=='']
         if empty.shape[0]>0:
             error='found empty POST requests in collection_http:'+str(empty.shape[0])
