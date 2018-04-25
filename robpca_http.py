@@ -113,18 +113,18 @@ def jsd(df,mcd):
 
 
 
+
 df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
-service_features={'http':['method','orig_mime_types','proxied', 'referrer',
+service_features={'http':['method','orig_mime_types', 'referrer',
        'request_body_len', 'resp_mime_types',
        'response_body_len', 'status_code', 'status_msg', 'tags',
        'trans_depth', 'ts', 'uid', 'uri', 'uri_length', 'user_agent',
        'username', 'version']}
-
-service_features_categories={'http':['method','orig_mime_types','proxied', 'referrer'
-       , 'resp_mime_types'
-       , 'status_code', 'status_msg', 'tags'
-       ,'uid', 'uri', 'user_agent',
+list_features=['orig_mime_types','resp_mime_types']
+content_features=['uri','post_content']
+service_features_categories={'http':['method', 'referrer'
+       , 'status_code', 'user_agent',
        'username']}
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -156,5 +156,28 @@ for index in range(intervals):
     
     
     df2=df.copy()
+    for ft in df2[service_features_categories['http']]:
+        column_name=ft+'_freq'
+        df2[column_name]=0
+        ft_freq=df2[ft].value_counts()/df_cnt
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+            
+    for fd in df2[list_features]:
+        column_name=fd+'_freq'
+        df2[column_name]=0
+        # # strip mime type list using .apply(pd.Series)
+        df_fn=df2.orig_mime_types.apply(pd.Series)
+        df_fn.columns=[fd]
+        # # select only valid mime_types
+        df_fn2=df_fn.loc[~df_fn[fd].isnull()]
+        fd_freq=df_fn2[fd].value_counts()/df_fn2.shape[0]
+        for nn in fd_freq.index.values:
+            # # take the indexes of df_fn where its value is that of fd_freq index,
+            # # and use the indexes to set the correct cells in df2
+            df2.loc[df_fn.loc[df_fn[fd]==nn].index.values,column_name]=fd_freq.loc[nn]
+        
+        
+        
     df2_n=(df2-df2.mean() )/df2.std(ddof=0)
     
