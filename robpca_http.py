@@ -266,12 +266,160 @@ for index in range(intervals):
     
     ind_post_content=df2.loc[~df2.post_content.isnull()].index.values
     post_ent_vec=df2.loc[ind_post_content,'post_content'].apply(ltr_entropy).apply(pd.Series)
-        
+    post_content_length_vec=df2.loc[ind_post_content,'post_content'].apply(len)
+    
     df2['post_content_entropy']=post_ent_vec.loc[:,0]
     df2['post_content_hexadecimal_entropy']=post_ent_vec.loc[:,1]
     df2['post_content_punctuation_entropy']=post_ent_vec.loc[:,2]
+    df2['post_content_length']=post_content_length_vec
+    
+    http_feature_columns=['request_body_len', 'response_body_len', 
+       'uri_length','post_content_length', 'method_freq',
+       'status_code_freq', 'user_agent_freq', 'username_freq',
+       'orig_mime_types_freq', 'resp_mime_types_freq', 'method_pair_freq',
+       'status_code_pair_freq', 'user_agent_pair_freq',
+       'username_pair_freq', 'orig_mime_types_pair_freq',
+       'resp_mime_types_pair_freq', 'method_jsd', 'status_code_jsd',
+       'user_agent_jsd', 'username_jsd', 'orig_mime_types_jsd',
+       'resp_mime_types_jsd', 'uri_entropy', 'uri_hexadecimal_entropy',
+       'uri_punctuation_entropy', 'post_content_entropy',
+       'post_content_hexadecimal_entropy',
+       'post_content_punctuation_entropy']
+    
+    df3=df2[http_feature_columns]
+    df3=df3.fillna(0)
+    df3_n=(df3-df3.mean() )/df3.std(ddof=0)
+    df3_n=df3_n.fillna(0)
+    print('sugar')
+    df_mat=df3_n.as_matrix()
+    
+    msg='start first robpca. Line296: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
+    
+    rpy2.robjects.numpy2ri.activate()
+    rospca=importr("rospca")
+    rpca=rospca.robpca(x=df_mat,mcd=True,ndir=5000)
+    loadings=np.array(rpca[0])
+    e_vals=np.array(rpca[1])
+    scores=np.array(rpca[2])
+    center=np.array(rpca[3])
+    H0=np.array(rpca[5])
+    H1=np.array(rpca[6])
+    SD=np.array(rpca[9])
+    OD=np.array(rpca[10])
+    SD_th=np.array(rpca[11])
+    OD_th=np.array(rpca[12])
+    SD_flag=np.array(rpca[13])
+    OD_flag=np.array(rpca[14])
+    
+   
+
+    
+    # #  compute the PCA sub-space covariance matrix
+    num_e_vals=e_vals.shape[0]
+    lambda_mat=e_vals*np.identity(num_e_vals)    
+    pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
+    # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
+    sc_3=(df3_n.as_matrix()-center).dot(loadings)
+    df2['SD']=SD
+    df2['SD_anomaly']=False
+    df2.loc[df2.SD>SD_th[0],'SD_anomaly']=True
+    df2['OD']=OD
+    df2['OD_anomaly']=False
+    df2.loc[df2.OD>SD_th[0],'OD_anomaly']=True
+    # # find the most influential feature for anomalous SD values
+    feat_vec_sd=which_feature_SD(df3_n.loc[df2.SD>SD_th[0],:],pca_cov)
+    df2['SD_feature']=0
+    df2.loc[df2.SD>SD_th[0],'SD_feature']=feat_vec_sd
+    # # find the most influential feature for anomalous OD values
+    feat_vec_od=which_feature_OD(df3_n.loc[df2.OD>OD_th[0],:])
+    df2['OD_feature']=0
+    df2.loc[df2.OD>OD_th[0],'OD_feature']=feat_vec_od
+    
+    # # find df_clean index that was used for mcd
+    mcd_index=df3_n.iloc[H1==1].index.values
+    
+    df2["mcd"]=False
+    df2.loc[df3_n.iloc[H1==1].index.values,'mcd']=True
     
     
-    df2.fillna()
-    df2_n=(df2-df2.mean() )/df2.std(ddof=0)
+    msg='start single line write to mongo . Line346: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
     
+ 
+    bin_lst=list(df._id)
+        
+    df.to_csv(str('df_'+pcap_dir+'_http_'+'bin_'+str(index)+'.csv'))
+    service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
+
+    msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_http'+':index='+str(index)
+    myLogger.error(msg)
+    
+    
+    from pymongo import UpdateOne
+    time_bulk=timeit.default_timer()
+    
+    bulk=service_coll.initialize_unordered_bulk_op()
+    d=0
+    write_list=list()
+    for idd in bin_lst:
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'post_content_length':df2.loc[df2._id==idd,'post_content_length'].values[0]
+                                                    ,'method_freq':df2.loc[df2._id==idd,'method_freq'].values[0]
+                                                    ,'status_code_freq':df2.loc[df2._id==idd,'status_code_freq'].values[0]
+                                                    ,'user_agent_freq':df2.loc[df2._id==idd,'user_agent_freq'].values[0]
+                                                    ,'username_freq':df2.loc[df2._id==idd,'username_freq'].values[0]
+                                                    ,'orig_mime_types_freq':df2.loc[df2._id==idd,'orig_mime_types_freq'].values[0]
+                                                    ,'mcd':json_bool(df2.loc[df2._id==idd,'mcd'].values[0])
+                                                    ,'method_pair_freq':df2.loc[df2._id==idd,'method_pair_freq'].values[0]
+                                                    ,'status_code_pair_freq':df2.loc[df2._id==idd,'status_code_pair_freq'].values[0]
+                                                    ,'user_agent_pair_freq':df2.loc[df2._id==idd,'user_agent_pair_freq'].values[0]
+                                                    ,'username_pair_freq':df2.loc[df2._id==idd,'username_pair_freq'].values[0]
+                                                    ,'orig_mime_types_pair_freq':df2.loc[df2._id==idd,'orig_mime_types_pair_freq'].values[0]
+                                                    ,'resp_mime_types_pair_freq':df2.loc[df2._id==idd,'resp_mime_types_pair_freq'].values[0]
+                                                    ,'method_jsd':df2.loc[df2._id==idd, 'method_jsd'].values[0]
+                                                    ,'status_code_jsd':df2.loc[df2._id==idd,'status_code_jsd'].values[0]
+                                                    ,'user_agent_jsd':df2.loc[df2._id==idd,'user_agent_jsd'].values[0]
+                                                    ,'username_jsd':df2.loc[df2._id==idd,'username_jsd'].values[0]
+                                                    ,'orig_mime_types_jsd':df2.loc[df2._id==idd,'orig_mime_types_jsd'].values[0]
+                                                    ,'resp_mime_types_jsd':json_bool(df2.loc[df2._id==idd,'resp_mime_types_jsd'].values[0])
+                                                    ,'uri_entropy':df2.loc[df2._id==idd,'uri_entropy'].values[0]
+                                                    ,'uri_hexadecimal_entropy':df2.loc[df2._id==idd,'uri_hexadecimal_entropy'].values[0]
+                                                    ,'uri_punctuation_entropy':df2.loc[df2._id==idd,'uri_punctuation_entropy'].values[0]
+                                                    ,'post_content_entropy':df2.loc[df2._id==idd,'post_content_entropy'].values[0]
+                                                    ,'post_content_hexadecimal_entropy':df2.loc[df2._id==idd,'post_content_hexadecimal_entropy'].values[0]
+                                                    ,'post_content_punctuation_entropy':df2.loc[df2._id==idd,'post_content_punctuation_entropy'].values[0]
+                                                    ,'SD':json_bool(df2.loc[df2._id==idd,'SD'].values[0])
+                                                    ,'SD_anomaly':json_bool(df2.loc[df2._id==idd,'SD_anomaly'].values[0])
+                                                    ,'SD_feature':json_bool(df2.loc[df2._id==idd,'SD_feature'].values[0])
+                                                    ,'OD':json_bool(df2.loc[df2._id==idd,'OD'].values[0])
+                                                    ,'OD_anomaly':json_bool(df2.loc[df2._id==idd,'OD_anomaly'].values[0])
+                                                    ,'OD_feature':json_bool(df2.loc[df2._id==idd,'OD_feature'].values[0])
+                                                    }})
+    )
+    
+        if (len(write_list)%500==0):
+            try:
+                collection_pcap.bulk_write(write_list,ordered=False)
+            except Exception as e: 
+                error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':batch='+str(d)+':error on bulk write to mongo'
+                myLogger.error(error)
+            write_list=list() 
+            msg='wrote bulk to mongo. Line520: directory= '+pcap_dir+':index='+str(index)+':batch='+str(d)+': write_list size:'+str(len(write_list))
+            d+=1
+            myLogger.error(msg)
+    if (len(write_list)>0):
+        try:
+            collection_pcap.bulk_write(write_list,ordered=False)
+        except Exception as e: 
+            error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':error on bulk write to mongo'
+            myLogger.error(error)
+    
+    elapsed_bulk=timeit.default_timer()-time_bulk
+    
+    ld2=pd.DataFrame(loadings,index=http_feature_columns)
+    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th[0],'HTTP_OD_threshold':OD_th[0]}},upsert=False)
+    msg='finished processing bin. Line421: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
+    
+    
+    first_ts+=time_interval
