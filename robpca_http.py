@@ -9,7 +9,8 @@ import pymongo
 import rpy2
 from rpy2.robjects.packages import importr
 import rpy2.robjects.numpy2ri
-
+import string
+import re
 import itertools
 import timeit
 
@@ -111,8 +112,78 @@ def jsd(df,mcd):
     dff.fillna(0,inplace=True)
     return dff.jsd
 
+def category_frequency_vectors(df2,feature_list):
+    for ft in df2[feature_list]:
+        column_name=ft+'_freq'
+        df2[column_name]=0
+        ft_freq=df2[ft].value_counts()/df2.shape[0]
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    return df2
+
+def pair_category_frequency_vectors(df2,feature_list):
+    for ft in df2[feature_list]:
+        column_name=ft+'_pair_freq'
+        if ft in list_features:
+          
+            df_fn=df2[ft].apply(pd.Series)
+            df_fn.columns=[ft]
+            # # select only valid mime_types
+            df_fn2=df_fn.loc[~df_fn[ft].isnull()]
+            ft_freq=df_fn2[ft].value_counts()/df_fn2.shape[0]
+            for category in ft_freq.index.values:
+                df2.loc[df_fn.loc[df_fn[ft]==category].index.values,column_name]= ft_freq.loc[category] 
+        else:
+            ft_freq=df2[ft].value_counts()/df2.shape[0]
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    return df2
 
 
+
+
+def list_features_frequency_vectors(df2,list_features):
+    for fd in list_features:
+        column_name=fd+'_freq'
+        df2[column_name]=0
+        # # strip mime type list using .apply(pd.Series)
+        df_fn=df2[fd].apply(pd.Series)
+        df_fn.columns=[fd]
+        # # select only valid mime_types
+        df_fn2=df_fn.loc[~df_fn[fd].isnull()]
+        fd_freq=df_fn2[fd].value_counts()/df_fn2.shape[0]
+        for nn in fd_freq.index.values:
+            # # take the indexes of df_fn where its value is that of fd_freq index,
+            # # and use the indexes to set the correct cells in df2
+            df2.loc[df_fn.loc[df_fn[fd]==nn].index.values,column_name]=fd_freq.loc[nn]
+    return df2
+
+def ltr_entropy(string_mine):
+        "Calculates the Shannon entropy of a string"
+        # get probability of chars in string
+        dict_str=dict.fromkeys(list(string_mine))
+        
+        prob = [ float(string_mine.count(c)) / len(string_mine) for c in dict_str]
+
+        # calculate the entropy
+        entropy = [ p * math.log(p) / math.log(2.0) for p in prob ]
+        
+        dict_entropy=dict(zip(dict_str,entropy))
+        
+        hex_entropy=[dict_entropy[x] if x not in string.printable else 0 for x in dict_entropy]
+        
+        punctuation_entropy=[dict_entropy[x] if x  in string.punctuation else 0 for x in dict_entropy]
+        
+        total_entropy=-sum(entropy)
+        if total_entropy>0:
+            return [total_entropy,-sum(hex_entropy)/total_entropy,-sum(punctuation_entropy)/total_entropy]
+        else:
+            return [total_entropy,hex_entropy[0],punctuation_entropy[0]]
+
+def is_numeric_uri(uri_str):
+    re1=re.findall('\.[0-9]{1,3}',uri_str)
+    
+    return (len(re1)==3)
 
 df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
@@ -122,8 +193,8 @@ service_features={'http':['method','orig_mime_types', 'referrer',
        'trans_depth', 'ts', 'uid', 'uri', 'uri_length', 'user_agent',
        'username', 'version']}
 list_features=['orig_mime_types','resp_mime_types']
-content_features=['uri','post_content']
-service_features_categories={'http':['method', 'referrer'
+content_features={'http':['uri','post_content']}
+service_features_categories={'http':['method' 
        , 'status_code', 'user_agent',
        'username']}
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
@@ -151,33 +222,56 @@ for index in range(intervals):
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
-    # # origin_pkts interval per flow
+       
     
+    df2=category_frequency_vectors(df.copy(),service_features_categories['http'])
     
+
+    df2=list_features_frequency_vectors(df2,list_features)          
     
-    df2=df.copy()
-    for ft in df2[service_features_categories['http']]:
-        column_name=ft+'_freq'
-        df2[column_name]=0
-        ft_freq=df2[ft].value_counts()/df_cnt
-        for category in ft_freq.index.values:
-            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    total_category_features=service_features_categories['http']+list_features    
+    
+    # # prepping df2 pairwise feature columns
+    pair_category_features=[x+'_pair_freq'  for x in total_category_features]
+    for feature in pair_category_features:
+            df2[feature]=0 
+    # # prepping df2 pairwise jsd feature columns
+    jsd_category_features=[x+'_jsd'  for x in total_category_features]
+    for feature in jsd_category_features:
+            df2[feature]=0 
             
-    for fd in df2[list_features]:
-        column_name=fd+'_freq'
-        df2[column_name]=0
-        # # strip mime type list using .apply(pd.Series)
-        df_fn=df2.orig_mime_types.apply(pd.Series)
-        df_fn.columns=[fd]
-        # # select only valid mime_types
-        df_fn2=df_fn.loc[~df_fn[fd].isnull()]
-        fd_freq=df_fn2[fd].value_counts()/df_fn2.shape[0]
-        for nn in fd_freq.index.values:
-            # # take the indexes of df_fn where its value is that of fd_freq index,
-            # # and use the indexes to set the correct cells in df2
-            df2.loc[df_fn.loc[df_fn[fd]==nn].index.values,column_name]=fd_freq.loc[nn]
+    # # grouping http flows by orig-resp pairs         
+    gb=df2.groupby(['id_orig_h','id_resp_h'])
+    for pair in gb.groups:
+        gtemp=gb.get_group(pair)
+        gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
+        for feature in total_category_features:
+            gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
+            gtemp[feature+'_jsd']=jsd(gtemp[feature+'_freq'],gtemp[feature+'_pair_freq'])
         
+        for ind in gtemp.index.values:
+            for feature in service_features_categories['http']:
+                fi=service_features_categories['http'].index(feature)
+                df2.loc[ind,pair_category_features[fi]]=gtemp.loc[ind,pair_category_features[fi]]
+                df2.loc[ind,jsd_category_features[fi]]=gtemp.loc[ind,jsd_category_features[fi]]
+
         
+
+    
+    uri_ent_vec=df2.uri.apply(ltr_entropy).apply(pd.Series)
+    
+    df2['uri_entropy']=uri_ent_vec.loc[:,0]
+    df2['uri_hexadecimal_entropy']=uri_ent_vec.loc[:,1]
+    df2['uri_punctuation_entropy']=uri_ent_vec.loc[:,2]
+    
+    ind_post_content=df2.loc[~df2.post_content.isnull()].index.values
+    post_ent_vec=df2.loc[ind_post_content,'post_content'].apply(ltr_entropy).apply(pd.Series)
         
+    df2['post_content_entropy']=post_ent_vec.loc[:,0]
+    df2['post_content_hexadecimal_entropy']=post_ent_vec.loc[:,1]
+    df2['post_content_punctuation_entropy']=post_ent_vec.loc[:,2]
+    
+    
+    df2.fillna()
     df2_n=(df2-df2.mean() )/df2.std(ddof=0)
     
