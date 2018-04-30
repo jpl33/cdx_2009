@@ -65,6 +65,8 @@ def json_bool(obj):
             return str(obj).lower()
     if isinstance(obj, np.bool_):
             return str(obj).lower()
+    if isinstance(obj, int):
+            return str(obj)
     return obj
 
 
@@ -109,13 +111,16 @@ def jsd(df,mcd):
     dff['kl_df']=dff.df*np.log(dff.df/dff.m)
     dff['kl_mcd']=dff.mcd*np.log(dff.mcd/dff.m)
     dff['jsd']=dff.loc[:,'kl_df':'kl_mcd'].sum(axis=1)/2
-    dff.fillna(0,inplace=True)
+    dff.fillna(0.0,inplace=True)
+    dff['jsd']=dff['jsd'].apply(float)
+    
     return dff.jsd
 
 def category_frequency_vectors(df2,feature_list):
     for ft in df2[feature_list]:
         column_name=ft+'_freq'
         df2[column_name]=0
+        df2[column_name].apply(float)
         ft_freq=df2[ft].value_counts()/df2.shape[0]
         for category in ft_freq.index.values:
             df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
@@ -146,6 +151,7 @@ def list_features_frequency_vectors(df2,list_features):
     for fd in list_features:
         column_name=fd+'_freq'
         df2[column_name]=0
+        df2[column_name].apply(float)
         # # strip mime type list using .apply(pd.Series)
         df_fn=df2[fd].apply(pd.Series)
         df_fn.columns=[fd]
@@ -178,7 +184,7 @@ def ltr_entropy(string_mine):
         if total_entropy>0:
             return [total_entropy,-sum(hex_entropy)/total_entropy,-sum(punctuation_entropy)/total_entropy]
         else:
-            return [total_entropy,hex_entropy[0],punctuation_entropy[0]]
+            return [float(total_entropy),float(hex_entropy[0]),float(punctuation_entropy[0])]
 
 def is_numeric_uri(uri_str):
     re1=re.findall('\.[0-9]{1,3}',uri_str)
@@ -234,11 +240,11 @@ for index in range(intervals):
     # # prepping df2 pairwise feature columns
     pair_category_features=[x+'_pair_freq'  for x in total_category_features]
     for feature in pair_category_features:
-            df2[feature]=0 
+            df2[feature]=0.0 
     # # prepping df2 pairwise jsd feature columns
     jsd_category_features=[x+'_jsd'  for x in total_category_features]
     for feature in jsd_category_features:
-            df2[feature]=0 
+            df2[feature]=0.0 
             
     # # grouping http flows by orig-resp pairs         
     gb=df2.groupby(['id_orig_h','id_resp_h'])
@@ -320,7 +326,6 @@ for index in range(intervals):
     lambda_mat=e_vals*np.identity(num_e_vals)    
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
     # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
-    sc_3=(df3_n.as_matrix()-center).dot(loadings)
     df2['SD']=SD
     df2['SD_anomaly']=False
     df2.loc[df2.SD>SD_th[0],'SD_anomaly']=True
@@ -355,7 +360,8 @@ for index in range(intervals):
     msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_http'+':index='+str(index)
     myLogger.error(msg)
     
-    
+    df2=df2.fillna(0)  
+   
     from pymongo import UpdateOne
     time_bulk=timeit.default_timer()
     
@@ -381,7 +387,7 @@ for index in range(intervals):
                                                     ,'user_agent_jsd':df2.loc[df2._id==idd,'user_agent_jsd'].values[0]
                                                     ,'username_jsd':df2.loc[df2._id==idd,'username_jsd'].values[0]
                                                     ,'orig_mime_types_jsd':df2.loc[df2._id==idd,'orig_mime_types_jsd'].values[0]
-                                                    ,'resp_mime_types_jsd':json_bool(df2.loc[df2._id==idd,'resp_mime_types_jsd'].values[0])
+                                                    ,'resp_mime_types_jsd':df2.loc[df2._id==idd,'resp_mime_types_jsd'].values[0]
                                                     ,'uri_entropy':df2.loc[df2._id==idd,'uri_entropy'].values[0]
                                                     ,'uri_hexadecimal_entropy':df2.loc[df2._id==idd,'uri_hexadecimal_entropy'].values[0]
                                                     ,'uri_punctuation_entropy':df2.loc[df2._id==idd,'uri_punctuation_entropy'].values[0]
@@ -397,7 +403,7 @@ for index in range(intervals):
                                                     }})
     )
     
-        if (len(write_list)%500==0):
+        if (len(write_list)%10==0):
             try:
                 collection_pcap.bulk_write(write_list,ordered=False)
             except Exception as e: 
