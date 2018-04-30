@@ -15,9 +15,7 @@ import itertools
 import timeit
 
 import logging
-import time
-import matplotlib.pyplot as plt
-import seaborn as sns; sns.set(style="ticks", color_codes=True)
+import datetime
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 
@@ -32,11 +30,9 @@ myLogger.setLevel(logging.DEBUG)
 myLogger.addHandler(fh)
 
 
-mongo_fields={"id.orig_h":"id_orig_h","id.orig_p":"id_orig_p","id.resp_h":"id_resp_h","id.resp_p":"id_resp_p"}
 
 vuln_service={'http':0,'ftp':0,'dns':0,'dhcp':0,'sip':0,'ssh':0,'smb':0,'dce_rpc':0,'mysql':0,'snmp':0,'ssl':0}
 
-collection_filters={'conn':[('ts',pymongo.ASCENDING)]}
 
 
 
@@ -68,8 +64,6 @@ def json_bool(obj):
     if isinstance(obj, int):
             return str(obj)
     return obj
-
-
 
 pcap_dir= 'maccdc2012_00001'
 
@@ -164,6 +158,7 @@ def list_features_frequency_vectors(df2,list_features):
             df2.loc[df_fn.loc[df_fn[fd]==nn].index.values,column_name]=fd_freq.loc[nn]
     return df2
 
+
 def ltr_entropy(string_mine):
         "Calculates the Shannon entropy of a string"
         # get probability of chars in string
@@ -203,7 +198,11 @@ content_features={'http':['uri','post_content']}
 service_features_categories={'http':['method' 
        , 'status_code', 'user_agent',
        'username']}
-#doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
+
+
+    
+    
+    #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
@@ -216,6 +215,10 @@ for dd in last_doc: last_ts=dd['ts']
 intervals=math.floor((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
+    if index<4:
+        first_ts+=time_interval
+        continue
+   
     service='http'
     service_coll=get_db()[pcap_dir+'_'+service]
     
@@ -229,13 +232,13 @@ for index in range(intervals):
     # # number of flows in bin
     df_cnt=df.shape[0]
        
+    category_features= [ ft  for ft in service_features_categories['http'] if ft in df.columns]
+    df2=category_frequency_vectors(df.copy(),category_features)
     
-    df2=category_frequency_vectors(df.copy(),service_features_categories['http'])
+    list_features_bin= [ ft  for ft in list_features if ft in df.columns]
+    df2=list_features_frequency_vectors(df2,list_features_bin)          
     
-
-    df2=list_features_frequency_vectors(df2,list_features)          
-    
-    total_category_features=service_features_categories['http']+list_features    
+    total_category_features=category_features+list_features_bin    
     
     # # prepping df2 pairwise feature columns
     pair_category_features=[x+'_pair_freq'  for x in total_category_features]
@@ -263,8 +266,8 @@ for index in range(intervals):
 
         
 
-    
-    uri_ent_vec=df2.uri.apply(ltr_entropy).apply(pd.Series)
+    ind_uri=df2.loc[~df2.uri.isnull()].index.values
+    uri_ent_vec=df2.loc[ind_uri,'uri'].apply(ltr_entropy).apply(pd.Series)
     
     df2['uri_entropy']=uri_ent_vec.loc[:,0]
     df2['uri_hexadecimal_entropy']=uri_ent_vec.loc[:,1]
@@ -279,7 +282,7 @@ for index in range(intervals):
     df2['post_content_punctuation_entropy']=post_ent_vec.loc[:,2]
     df2['post_content_length']=post_content_length_vec
     
-    http_feature_columns=['request_body_len', 'response_body_len', 
+    all_feature_columns=['request_body_len', 'response_body_len', 
        'uri_length','post_content_length', 'method_freq',
        'status_code_freq', 'user_agent_freq', 'username_freq',
        'orig_mime_types_freq', 'resp_mime_types_freq', 'method_pair_freq',
@@ -291,7 +294,7 @@ for index in range(intervals):
        'uri_punctuation_entropy', 'post_content_entropy',
        'post_content_hexadecimal_entropy',
        'post_content_punctuation_entropy']
-    
+    http_feature_columns=[ft for ft in all_feature_columns if ft in df.columns]
     df3=df2[http_feature_columns]
     df3=df3.fillna(0)
     df3_n=(df3-df3.mean() )/df3.std(ddof=0)
@@ -334,11 +337,11 @@ for index in range(intervals):
     df2.loc[df2.OD>SD_th[0],'OD_anomaly']=True
     # # find the most influential feature for anomalous SD values
     feat_vec_sd=which_feature_SD(df3_n.loc[df2.SD>SD_th[0],:],pca_cov)
-    df2['SD_feature']=0
+    df2['SD_feature']=0.0
     df2.loc[df2.SD>SD_th[0],'SD_feature']=feat_vec_sd
     # # find the most influential feature for anomalous OD values
     feat_vec_od=which_feature_OD(df3_n.loc[df2.OD>OD_th[0],:])
-    df2['OD_feature']=0
+    df2['OD_feature']=0.0
     df2.loc[df2.OD>OD_th[0],'OD_feature']=feat_vec_od
     
     # # find df_clean index that was used for mcd
@@ -360,7 +363,7 @@ for index in range(intervals):
     msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_http'+':index='+str(index)
     myLogger.error(msg)
     
-    df2=df2.fillna(0)  
+    df2=df2.fillna(0.0)  
    
     from pymongo import UpdateOne
     time_bulk=timeit.default_timer()
@@ -373,19 +376,19 @@ for index in range(intervals):
                                                     ,'method_freq':df2.loc[df2._id==idd,'method_freq'].values[0]
                                                     ,'status_code_freq':df2.loc[df2._id==idd,'status_code_freq'].values[0]
                                                     ,'user_agent_freq':df2.loc[df2._id==idd,'user_agent_freq'].values[0]
-                                                    ,'username_freq':df2.loc[df2._id==idd,'username_freq'].values[0]
+                                                    #,'username_freq':df2.loc[df2._id==idd,'username_freq'].values[0]
                                                     ,'orig_mime_types_freq':df2.loc[df2._id==idd,'orig_mime_types_freq'].values[0]
                                                     ,'mcd':json_bool(df2.loc[df2._id==idd,'mcd'].values[0])
                                                     ,'method_pair_freq':df2.loc[df2._id==idd,'method_pair_freq'].values[0]
                                                     ,'status_code_pair_freq':df2.loc[df2._id==idd,'status_code_pair_freq'].values[0]
                                                     ,'user_agent_pair_freq':df2.loc[df2._id==idd,'user_agent_pair_freq'].values[0]
-                                                    ,'username_pair_freq':df2.loc[df2._id==idd,'username_pair_freq'].values[0]
+                                                    #,'username_pair_freq':df2.loc[df2._id==idd,'username_pair_freq'].values[0]
                                                     ,'orig_mime_types_pair_freq':df2.loc[df2._id==idd,'orig_mime_types_pair_freq'].values[0]
                                                     ,'resp_mime_types_pair_freq':df2.loc[df2._id==idd,'resp_mime_types_pair_freq'].values[0]
                                                     ,'method_jsd':df2.loc[df2._id==idd, 'method_jsd'].values[0]
                                                     ,'status_code_jsd':df2.loc[df2._id==idd,'status_code_jsd'].values[0]
                                                     ,'user_agent_jsd':df2.loc[df2._id==idd,'user_agent_jsd'].values[0]
-                                                    ,'username_jsd':df2.loc[df2._id==idd,'username_jsd'].values[0]
+                                                    #,'username_jsd':df2.loc[df2._id==idd,'username_jsd'].values[0]
                                                     ,'orig_mime_types_jsd':df2.loc[df2._id==idd,'orig_mime_types_jsd'].values[0]
                                                     ,'resp_mime_types_jsd':df2.loc[df2._id==idd,'resp_mime_types_jsd'].values[0]
                                                     ,'uri_entropy':df2.loc[df2._id==idd,'uri_entropy'].values[0]
@@ -403,7 +406,7 @@ for index in range(intervals):
                                                     }})
     )
     
-        if (len(write_list)%10==0):
+        if (len(write_list)%500==0):
             try:
                 collection_pcap.bulk_write(write_list,ordered=False)
             except Exception as e: 
