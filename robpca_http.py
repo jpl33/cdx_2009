@@ -65,7 +65,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00004'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -126,6 +126,7 @@ def pair_category_frequency_vectors(df2,feature_list):
         if ft in list_features:
           
             df_fn=df2[ft].apply(pd.Series)
+            df_fn=pd.DataFrame(df_fn[0])
             df_fn.columns=[ft]
             # # select only valid mime_types
             df_fn2=df_fn.loc[~df_fn[ft].isnull()]
@@ -148,6 +149,8 @@ def list_features_frequency_vectors(df2,list_features):
         df2[column_name].apply(float)
         # # strip mime type list using .apply(pd.Series)
         df_fn=df2[fd].apply(pd.Series)
+        if len(df_fn.columns)>1:
+            df_fn=pd.DataFrame(df_fn[0])
         df_fn.columns=[fd]
         # # select only valid mime_types
         df_fn2=df_fn.loc[~df_fn[fd].isnull()]
@@ -215,9 +218,9 @@ for dd in last_doc: last_ts=dd['ts']
 intervals=math.floor((last_ts-first_ts)/time_interval)
 
 for index in range(intervals):
-    if index<4:
-        first_ts+=time_interval
-        continue
+#    if index<4:
+#        first_ts+=time_interval
+#        continue
    
     service='http'
     service_coll=get_db()[pcap_dir+'_'+service]
@@ -231,7 +234,11 @@ for index in range(intervals):
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
-       
+    if df_cnt<100:
+        first_ts+=time_interval
+        continue
+    
+    username_flag='username' in df.columns
     category_features= [ ft  for ft in service_features_categories['http'] if ft in df.columns]
     df2=category_frequency_vectors(df.copy(),category_features)
     
@@ -282,20 +289,23 @@ for index in range(intervals):
     df2['post_content_punctuation_entropy']=post_ent_vec.loc[:,2]
     df2['post_content_length']=post_content_length_vec
     
+    username_columns=['username_freq','username_pair_freq', 'username_jsd']
     all_feature_columns=['request_body_len', 'response_body_len', 
        'uri_length','post_content_length', 'method_freq',
-       'status_code_freq', 'user_agent_freq', 'username_freq',
+       'status_code_freq', 'user_agent_freq', 
        'orig_mime_types_freq', 'resp_mime_types_freq', 'method_pair_freq',
-       'status_code_pair_freq', 'user_agent_pair_freq',
-       'username_pair_freq', 'orig_mime_types_pair_freq',
+       'status_code_pair_freq', 'user_agent_pair_freq', 'orig_mime_types_pair_freq',
        'resp_mime_types_pair_freq', 'method_jsd', 'status_code_jsd',
-       'user_agent_jsd', 'username_jsd', 'orig_mime_types_jsd',
+       'user_agent_jsd', 'orig_mime_types_jsd',
        'resp_mime_types_jsd', 'uri_entropy', 'uri_hexadecimal_entropy',
        'uri_punctuation_entropy', 'post_content_entropy',
        'post_content_hexadecimal_entropy',
        'post_content_punctuation_entropy']
     http_feature_columns=[ft for ft in all_feature_columns if ft in df.columns]
-    df3=df2[http_feature_columns]
+    if username_flag:
+        all_feature_columns=all_feature_columns+username_columns
+    
+    df3=df2[all_feature_columns]
     df3=df3.fillna(0)
     df3_n=(df3-df3.mean() )/df3.std(ddof=0)
     df3_n=df3_n.fillna(0)
@@ -425,7 +435,7 @@ for index in range(intervals):
     
     elapsed_bulk=timeit.default_timer()-time_bulk
     
-    ld2=pd.DataFrame(loadings,index=http_feature_columns)
+    ld2=pd.DataFrame(loadings,index=all_feature_columns)
     collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th[0],'HTTP_OD_threshold':OD_th[0]}},upsert=False)
     msg='finished processing bin. Line421: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
