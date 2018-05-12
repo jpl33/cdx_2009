@@ -303,10 +303,10 @@ for index in range(intervals):
  
     bin_lst=list(df2._id)
         
-    df2.to_csv(str('df_'+pcap_dir+'_dns_'+'bin_'+str(index)+'.csv'))
+    #df2.to_csv(str('df_'+pcap_dir+'_dns_'+'bin_'+str(index)+'.csv'))
     service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
-    msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_http'+':index='+str(index)
+    msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_dns'+':index='+str(index)
     myLogger.error(msg)
     
     df2=df2.fillna(0)  
