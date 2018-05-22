@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -142,14 +142,21 @@ def jsd(df,mcd):
     dff.fillna(0,inplace=True)
     return dff.jsd
 
+def orig_category_frequency_vectors(df2,feature_list):
+    for ft in df2[feature_list]:
+        column_name=ft+'_orig_freq'
+        ft_freq=df2[ft].value_counts()/df2.shape[0]
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    return df2
 
 
-df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
+df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','service_freq','history_freq','conn_state_freq','service_orig_freq','history_orig_freq','conn_state_orig_freq','service_jsd','history_jsd','conn_state_jsd','orig_to_resp_freq','orig_to_resp_orig_freq','orig_to_resp_jsd']
 
 
-df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq','serv_jsd','history_jsd','conn_state_jsd']
+df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','service_freq','history_freq','conn_state_freq','service_jsd','history_jsd','conn_state_jsd']
 
-
+category_features=['service','history','conn_state','orig_to_resp']
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
@@ -179,21 +186,35 @@ for index in range(intervals):
     
     df['orig_pkts_size']=df.orig_bytes/df.orig_pkts
     
-    serv_freq=df.service.value_counts()/df_cnt
-    df['serv_freq']=0
-    for idd in serv_freq.index.values:
-        df.loc[df.service==idd,'serv_freq']= serv_freq.loc[idd]       
-    
-    history_freq=df.history.value_counts()/df_cnt
-    df['history_freq']=0
-    for idd in history_freq.index.values:
-        df.loc[df.history==idd,'history_freq']= history_freq.loc[idd]    
-    
-    conn_state_freq=df.conn_state.value_counts()/df_cnt
-    df['conn_state_freq']=0
-    for idd in conn_state_freq.index.values:
-        df.loc[df.conn_state==idd,'conn_state_freq']= conn_state_freq.loc[idd]    
-    
+#    serv_freq=df.service.value_counts()/df_cnt
+#    df['service_freq']=0
+#    for idd in serv_freq.index.values:
+#        df.loc[df.service==idd,'serv_freq']= serv_freq.loc[idd]       
+#    
+#    history_freq=df.history.value_counts()/df_cnt
+#    df['history_freq']=0
+#    for idd in history_freq.index.values:
+#        df.loc[df.history==idd,'history_freq']= history_freq.loc[idd]    
+#    
+#    conn_state_freq=df.conn_state.value_counts()/df_cnt
+#    df['conn_state_freq']=0
+#    for idd in conn_state_freq.index.values:
+#        df.loc[df.conn_state==idd,'conn_state_freq']= conn_state_freq.loc[idd]    
+    df['orig_to_resp']=float(0)
+    for feature in category_features:
+            df[feature+'_freq']=0.0
+            ft_freq=df[feature].value_counts()/df_cnt
+            for idd in ft_freq.index.values:
+                df.loc[df[feature]==idd,feature+'_freq']= ft_freq.loc[idd]
+                
+    # # prepping df pairwise feature columns
+    orig_category_features=[x+'_orig_freq'  for x in category_features]
+    for feature in orig_category_features:
+            df[feature]=0.0 
+    # # prepping df pairwise jsd feature columns
+    jsd_category_features=[x+'_jsd'  for x in category_features]
+    for feature in jsd_category_features:
+            df[feature]=0.0 
     
     
     df2=df.copy()
@@ -209,9 +230,21 @@ for index in range(intervals):
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     ggtsdf=list()
     gdict=gb.groups
+    df4=pd.DataFrame(list(zip(*gb.groups.keys())))
+    df4=df4.T
+    df4.columns=['id_orig_h','id_resp_h']
+    df4['flows']=float(0)
+    df4['server']=float(0)
+    df4['resp_to_orig']=float(0)
+    df4['orig_to_resp']=float(0)
+    anomal_lst=[x if x in df4.id_resp_h.values else 0 for x in df4.id_orig_h]
+    anomal_lst=list(set(anomal_lst))
+    anomal_lst.remove(0)
+    
     # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
     for ss in gb.groups:
         gtemp=gb.get_group(ss)
+        df4.loc[(df4.id_orig_h==ss[0])&(df4.id_resp_h==ss[1]),'flows']=gtemp.shape[0]        
         df3=gtemp.groupby(['ts']).sum()
         gtsdf=df3.orig_pkts.median()
         # # ggtsdf is list of all pairs origin_pkts/second medians
@@ -221,6 +254,34 @@ for index in range(intervals):
         # # set 'cumultv_pkt_count' for all indexes that belong to orig-resp pair
         df.iloc[gdict[ss].values,df.columns.get_loc('cumultv_pkt_count')]=gtsdf
     
+    for src in anomal_lst:
+        if df4.loc[df4.id_orig_h==src,'flows'].sum()>df4.loc[df4.id_resp_h==src,'flows'].sum():
+            df4.loc[df4.id_resp_h==src,'orig_to_resp']=1
+            df.loc[df.id_resp_h==src,'orig_to_resp']=1
+        else:   
+            df4.loc[df4.id_orig_h==src,'resp_to_orig']=1
+            df.loc[df.id_orig_h==src,'resp_to_orig']=1
+    df=df.fillna(0)
+    ft_freq=df['orig_to_resp'].value_counts()/df_cnt
+    for idd in ft_freq.index.values:
+        df.loc[df['orig_to_resp']==idd,'orig_to_resp_freq']= ft_freq.loc[idd]
+    
+    gb1=df.groupby('id_orig_h')
+    for orig in gb1.groups:
+        gtemp1=gb1.get_group(orig)
+        gtemp1=orig_category_frequency_vectors(gtemp1,category_features)
+        for feature in category_features:
+#            gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
+            gtemp1[feature+'_jsd']=jsd(gtemp1[feature+'_freq'],gtemp1[feature+'_orig_freq'])
+        
+        for ind in gtemp1.index.values:
+            for feature in category_features:
+                fi=category_features.index(feature)
+                df.loc[ind,orig_category_features[fi]]=gtemp1.loc[ind,orig_category_features[fi]]
+                df.loc[ind,jsd_category_features[fi]]=gtemp1.loc[ind,jsd_category_features[fi]]
+
+    
+            
     # # series of orig_pkts/sec medians with orig-resp pairs as index    
     op_ser=pd.Series(ggtsdf,index=gdict.keys()) 
     iqr=sci.stats.iqr(op_ser)
@@ -252,7 +313,7 @@ for index in range(intervals):
     msg='finish looking for bad flows. Line252: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
-    df_clean=df2.copy()
+    df_clean=df.copy()
     for ppn in outly_pairs:
         # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
         df_clean=df_clean[~df_clean.index.isin(gdict[ppn].values)]
@@ -369,10 +430,10 @@ for index in range(intervals):
     bulk=collection_pcap.initialize_unordered_bulk_op()
     write_list=list()
     for idd in bin_lst:
-        collection_pcap.update_one({'_id':idd},{'$set':{'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
                                                     ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
                                                     ,'cumultv_pkt_count':df.loc[df._id==idd,'cumultv_pkt_count'].values[0]
-                                                    ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
+                                                    ,'service_freq':df.loc[df._id==idd,'service_freq'].values[0]
                                                     ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
                                                     ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
                                                     ,'mcd':json_bool(df.loc[df._id==idd,'mcd'].values[0])
@@ -382,44 +443,29 @@ for index in range(intervals):
                                                     ,'OD':json_bool(df.loc[df._id==idd,'OD'].values[0])
                                                     ,'OD_anomaly':json_bool(df.loc[df._id==idd,'OD_anomaly'].values[0])
                                                     ,'OD_feature':json_bool(df.loc[df._id==idd,'OD_feature'].values[0])
-                                                    }})
-#        write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
-#                                                    ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
-#                                                    ,'cumultv_pkt_count':df.loc[df._id==idd,'cumultv_pkt_count'].values[0]
-#                                                    ,'serv_freq':df.loc[df._id==idd,'serv_freq'].values[0]
-#                                                    ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
-#                                                    ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
-#                                                    ,'mcd':json_bool(df.loc[df._id==idd,'mcd'].values[0])
-#                                                    ,'SD':json_bool(df.loc[df._id==idd,'SD'].values[0])
-#                                                    ,'SD_anomaly':json_bool(df.loc[df._id==idd,'SD_anomaly'].values[0])
-#                                                    ,'SD_feature':json_bool(df.loc[df._id==idd,'SD_feature'].values[0])
-#                                                    ,'OD':json_bool(df.loc[df._id==idd,'OD'].values[0])
-#                                                    ,'OD_anomaly':json_bool(df.loc[df._id==idd,'OD_anomaly'].values[0])
-#                                                    ,'OD_feature':json_bool(df.loc[df._id==idd,'OD_feature'].values[0])
-#                                                    }})
-#    )
-#        if (len(write_list)%500==0):
-#            try:
-#                collection_pcap.bulk_write(write_list,ordered=False)
-#            except Exception as e: 
-#                error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':batch='+str(d)+':error on bulk write to mongo'
-#                myLogger.error(error)
-#            write_list=list() 
-#            msg='wrote bulk to mongo. Line520: directory= '+pcap_dir+':index='+str(index)+':batch='+str(d)+': write_list size:'+str(len(write_list))
-#            d+=1
-#            myLogger.error(msg)
-#            
-#    if (len(write_list)>0):
-#        try:
-#            collection_pcap.bulk_write(write_list,ordered=False)
-#        except Exception as e: 
-#            error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':error on bulk write to mongo'
-#            myLogger.error(error)
+                                                    }}))
+    if (len(write_list)%500==0):
+        try:
+            collection_pcap.bulk_write(write_list,ordered=False)
+        except Exception as e: 
+            error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':batch='+str(d)+':error on bulk write to mongo'
+            myLogger.error(error)
+            write_list=list() 
+            msg='wrote bulk to mongo. Line520: directory= '+pcap_dir+':index='+str(index)+':batch='+str(d)+': write_list size:'+str(len(write_list))
+            d+=1
+            myLogger.error(msg)
+    if (len(write_list)>0):
+        try:
+            collection_pcap.bulk_write(write_list,ordered=False)
+        except Exception as e: 
+            error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':error on bulk write to mongo'
+            myLogger.error(error)
+    
     
     elapsed_bulk=timeit.default_timer()-time_bulk
     
     llp=json.dumps(outly_pairs)
-    ld2=pd.DataFrame(loadings,index=df_feature_cols2)
+    ld2=pd.DataFrame(loadings,index=df_feature_cols1)
     collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp,'PCs':ld2.to_json()}},upsert=False)
     msg='finished processing bin. Line513: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
