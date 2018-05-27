@@ -67,7 +67,7 @@ def json_bool(obj):
 
 
 
-pcap_dirs= ['maccdc2012_00001','maccdc2012_00002']#,'maccdc2012_00003','maccdc2012_00004']
+pcap_dirs= ['maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']#,'maccdc2012_00004']
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -129,7 +129,7 @@ for pp in pcap_dirs:
     for dd in last_doc: last_ts=dd['ts']
     
     intervals=math.floor((last_ts-first_ts)/time_interval)
-    df_eda_cols=['collection','bin','count','attack_bool_count','mcd2','mcd2_attack_pcnt','SD_anomaly','SD_anomaly_attacks_pcnt','SD_anomaly_attacks_TP','SD2_anomaly','SD2_anomaly_attacks_pcnt','SD2_anomaly_attacks_TP','OD_anomaly','OD_anomaly_attacks_pcnt','OD_anomaly_attacks_TP','OD2_anomaly','OD2_anomaly_attacks_pcnt','OD2_anomaly_attacks_TP']
+    df_eda_cols=['collection','bin','count','attack_bool_count','mcd','mcd_attack_pcnt','SD_anomaly','SD_anomaly_recall','SD_anomaly_percision','OD_anomaly','OD_anomaly_recall','OD_anomaly_percision','SD_F1']
     
     for index in range(intervals):
 
@@ -147,36 +147,33 @@ for pp in pcap_dirs:
                             index,
                             df_cnt,
                             df.loc[df.attack_bool==True].shape[0],
-                            df.loc[df.mcd2=='true'].shape[0],
-                            df.loc[(df.mcd2=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                            df.loc[df.mcd=='true'].shape[0],
+                            df.loc[(df.mcd=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[df.SD_anomaly=='true'].shape[0],
                             df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD_anomaly=='true'].shape[0],
-                            df.loc[df.SD2_anomaly=='true'].shape[0],
-                            df.loc[(df.SD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
-                            df.loc[(df.SD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD2_anomaly=='true'].shape[0],
                             df.loc[df.OD_anomaly=='true'].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0],
-                            df.loc[df.OD2_anomaly=='true'].shape[0],
-                            df.loc[(df.OD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
-                            df.loc[(df.OD2_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD2_anomaly=='true'].shape[0],
-                            ])
+                            0
+                           ])
         df_r1=pd.DataFrame(df_s1).T
         df_r1.columns=df_eda_cols
+        F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
+        df_r1['SD_F1']=F1
         df_eda=df_eda.append(df_r1)
         first_ts+=time_interval
-
+    anomal_attacks=(df_eda.SD_anomaly_recall*df_eda.attack_bool_count).sum()
+    attacks=df_eda.attack_bool_count.sum()
+    anomalies=df_eda.SD_anomaly.sum()
+    recall=anomal_attacks/attacks
+    precision=anomal_attacks/anomalies
+    F1=2*precision*recall/(precision+recall)
+    df1=pd.Series([F1,0,0,0,0,0,0,0,0,0,0,0,0])
+    df11=pd.DataFrame(df1).T
+    df11.columns=df_eda_cols
+    df_eda=df_eda.append(df11)
 #df_eda.iloc[:,1:]=df_eda.iloc[:,1:].astype(float)
-for cc in df_eda.iloc[:,1:]: df_eda[cc]=df_eda[cc].astype(float)
-desc_list=[df_eda[cc].describe() for cc in df_eda.iloc[:,1:]]
-mean_list=[mm['mean'] for mm in desc_list]
-std_list=[mm['std'] for mm in desc_list]
 
-for dd in [mean_list,std_list]:
-    df_dd=pd.DataFrame(pd.Series(dd))
-    df_dd=df_dd.T
-    df_dd.columns=df_eda_cols[1:]
-    df_eda.append(df_dd)
     
 df_eda.to_csv("df_eda.csv")
