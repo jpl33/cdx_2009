@@ -151,10 +151,9 @@ def orig_category_frequency_vectors(df2,feature_list):
     return df2
 
 
-df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_size','orig_pkts_intr','orig_pkts_diff','resp_pkts_diff','ts_diff','service_orig_freq','history_orig_freq','conn_state_orig_freq']# 'service_freq','history_freq','conn_state_freq',
+df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_size','orig_pkts_intr','orig_pkts_diff','resp_pkts_diff','ts_diff','service_orig_freq','history_orig_freq','conn_state_orig_freq','orig_to_resp_freq']# 'service_freq','history_freq','conn_state_freq',
 
 
-df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','service_freq','history_freq','conn_state_freq','service_jsd','history_jsd','conn_state_jsd']
 
 category_features=['service','history','conn_state','orig_to_resp','resp_to_orig']
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
@@ -231,7 +230,7 @@ for index in range(intervals):
     anomal_lst=list(set(anomal_lst))
     anomal_lst.remove(0)
     
-    df5=df.copy()
+
     
     # # iterate over orig-resp pairs, aggregate flows per second, and get the median of the origin pkts sent
     for ss in gb.groups:
@@ -271,7 +270,7 @@ for index in range(intervals):
     gb1=df.groupby('id_orig_h')
     for orig in gb1.groups:
         gtemp1=gb1.get_group(orig)
-        cc=category_features[0:3]
+        cc=category_features[0:4]
         gtemp1=orig_category_frequency_vectors(gtemp1,cc)
         for feature in category_features:
 #            gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
@@ -325,12 +324,12 @@ for index in range(intervals):
     
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
     df3=df[df_feature_cols1]
-    #df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
-    df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
+    df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
+    #df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
     dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
     
-    df_mat=df3_norm.as_matrix()
-    #df_mat=df_c_n.as_matrix()
+    #df_mat=df3_norm.as_matrix()
+    df_mat=df_c_n.as_matrix()
     
     msg='start first robpca. Line269: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
@@ -401,7 +400,7 @@ for index in range(intervals):
     df.loc[sd_3.SD_feature!=0,'SD_feature']=feat_vec_sd
     df['OD']=sd_3.od_mine
     df['OD_anomaly']=False
-    df.loc[sd_3.sd_flag==0,'OD_anomaly']=True
+    df.loc[sd_3.od_flag==0,'OD_anomaly']=True
     df['OD_feature']=False
     df.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
     
@@ -418,7 +417,6 @@ for index in range(intervals):
     
  
     bin_lst=list(df._id)
-    #mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
     
     df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+str(index)+'.csv'))
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
@@ -432,8 +430,9 @@ for index in range(intervals):
     d=0
     bulk=collection_pcap.initialize_unordered_bulk_op()
     write_list=list()
-    for idd in bin_lst:
-        write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_pkts_diff':df.loc[df._id==idd,'orig_pkts_diff'].values[0]
+    for idd in bin_lst:   
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_to_resp_freq':df.loc[df._id==idd,'orig_to_resp_freq'].values[0]
+                                                    ,'orig_pkts_diff':df.loc[df._id==idd,'orig_pkts_diff'].values[0]
                                                     ,'resp_pkts_diff':df.loc[df._id==idd,'resp_pkts_diff'].values[0]
                                                     ,'ts_diff':df.loc[df._id==idd,'ts_diff'].values[0]
                                                     ,'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
