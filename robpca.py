@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00003'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -401,7 +401,7 @@ for index in range(intervals):
     df.loc[sd_3.SD_feature!=0,'SD_feature']=feat_vec_sd
     df['OD']=sd_3.od_mine
     df['OD_anomaly']=False
-    df.loc[sd_3.sd_flag==0,'OD_anomaly']=True
+    df.loc[sd_3.od_flag==0,'OD_anomaly']=True
     df['OD_feature']=False
     df.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
     
@@ -420,7 +420,7 @@ for index in range(intervals):
     bin_lst=list(df._id)
     #mcd_lst=list(df2.loc[df_clean.loc[df_clean.mcd==True].index.values,'_id'])
     
-    df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+str(index)+'.csv'))
+    #df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+str(index)+'.csv'))
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
     msg='start bulk write to mongo. Line565: directory= '+pcap_dir+':index='+str(index)

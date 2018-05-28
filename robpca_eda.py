@@ -129,7 +129,7 @@ for pp in pcap_dirs:
     for dd in last_doc: last_ts=dd['ts']
     
     intervals=math.floor((last_ts-first_ts)/time_interval)
-    df_eda_cols=['collection','bin','count','attack_bool_count','mcd','mcd_attack_pcnt','SD_anomaly','SD_anomaly_recall','SD_anomaly_percision','OD_anomaly','OD_anomaly_recall','OD_anomaly_percision','SD_F1']
+    df_eda_cols=['collection','bin','count','attack_bool_count','mcd','mcd_attack_pcnt','SD_anomaly','SD_anomaly_recall','SD_anomaly_percision','OD_anomaly','OD_anomaly_recall','OD_anomaly_percision','SD_F1','OD_F1']
     
     for index in range(intervals):
 
@@ -155,21 +155,31 @@ for pp in pcap_dirs:
                             df.loc[df.OD_anomaly=='true'].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
                             df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0],
+                            0,
                             0
                            ])
         df_r1=pd.DataFrame(df_s1).T
         df_r1.columns=df_eda_cols
-        F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
-        df_r1['SD_F1']=F1
+        SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
+        OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+        df_r1['SD_F1']=SD_F1
+        df_r1['OD_F1']=OD_F1
         df_eda=df_eda.append(df_r1)
         first_ts+=time_interval
-    anomal_attacks=(df_eda.SD_anomaly_recall*df_eda.attack_bool_count).sum()
-    attacks=df_eda.attack_bool_count.sum()
-    anomalies=df_eda.SD_anomaly.sum()
-    recall=anomal_attacks/attacks
-    precision=anomal_attacks/anomalies
-    F1=2*precision*recall/(precision+recall)
-    df1=pd.Series([F1,0,0,0,0,0,0,0,0,0,0,0,0])
+    df_eda_pp=df_eda.loc[df_eda.collection==pp]
+    anomal_attacks_SD=(df_eda_pp.SD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
+    attacks=df_eda_pp.attack_bool_count.sum()
+    anomalies_SD=df_eda_pp.SD_anomaly.sum()
+    recall_SD=anomal_attacks_SD/attacks
+    precision_SD=anomal_attacks_SD/anomalies_SD
+    anomal_attacks_OD=(df_eda_pp.OD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
+    attacks=df_eda_pp.attack_bool_count.sum()
+    anomalies_OD=df_eda_pp.OD_anomaly.sum()
+    recall_OD=anomal_attacks_OD/attacks
+    precision_OD=anomal_attacks_OD/anomalies_SD
+    F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
+    F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+    df1=pd.Series([F1_SD,F1_OD,0,0,0,0,0,0,0,0,0,0,0,0])
     df11=pd.DataFrame(df1).T
     df11.columns=df_eda_cols
     df_eda=df_eda.append(df11)
