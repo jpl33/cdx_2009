@@ -160,6 +160,7 @@ for pp in pcap_dirs:
                            ])
         df_r1=pd.DataFrame(df_s1).T
         df_r1.columns=df_eda_cols
+
         SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
         OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
         df_r1['SD_F1']=SD_F1
@@ -179,11 +180,19 @@ for pp in pcap_dirs:
     precision_OD=anomal_attacks_OD/anomalies_SD
     F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
     F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
-    df1=pd.Series([F1_SD,F1_OD,0,0,0,0,0,0,0,0,0,0,0,0])
+    df1=pd.Series([F1_SD,F1_OD,0,0,0,0,0,0,0,0,0,0,0,k0])
     df11=pd.DataFrame(df1).T
     df11.columns=df_eda_cols
     df_eda=df_eda.append(df11)
 #df_eda.iloc[:,1:]=df_eda.iloc[:,1:].astype(float)
-
-    
+#dd=collection_bins.find({'index':3,'pcap_dir':'maccdc2012_00001'})
+#dfff=pd.DataFrame(list(dd))
+#pc=pd.DataFrame(json.loads(dfff.PCs.values[0]))
+##    
 df_eda.to_csv("df_eda.csv")
+
+#from sklearn.preprocessing import StandardScaler
+#bin0mcd_norm = StandardScaler().fit_transform(bin0mcd)
+#from sklearn.decomposition import PCA
+#pca = PCA(n_components=0.9)
+#pca.fit(bin0mcd_norm)
