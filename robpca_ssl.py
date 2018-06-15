@@ -80,7 +80,42 @@ collection_bins= get_db()['bins']
 finish=collection_pcap.count()
 time_interval=180
 
+def category_frequency_vectors(df2,feature_list):
+    for ft in df2[feature_list]:
+        column_name=ft+'_freq'
+        df2[column_name]=0
+        df2[column_name].apply(float)
+        ft_freq=df2[ft].value_counts()/df2.shape[0]
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    return df2
 
+def pair_category_frequency_vectors(df2,feature_list):
+    for ft in df2[feature_list]:
+        column_name=ft+'_pair_freq'
+        ft_freq=df2[ft].value_counts()/df2.shape[0]
+        for category in ft_freq.index.values:
+            df2.loc[df2[ft]==category,column_name]= ft_freq.loc[category] 
+    return df2
+
+def jsd(df,mcd):
+    dff=pd.concat([df,mcd],axis=1)
+    dff.columns=['df','mcd']    
+    dff['m']=dff.sum(axis=1)/2
+    dff['kl_df']=dff.df*np.log(dff.df/dff.m)
+    dff['kl_mcd']=dff.mcd*np.log(dff.mcd/dff.m)
+    dff['jsd']=dff.loc[:,'kl_df':'kl_mcd'].sum(axis=1)/2
+    dff.fillna(0.0,inplace=True)
+    dff['jsd']=dff['jsd'].apply(float)
+    
+    return dff.jsd
+
+
+
+
+df_category_features=['resumed','established','validation_status','version']
+
+df_feature_cols=[]
 
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
@@ -107,38 +142,44 @@ for index in range(intervals):
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
-       
-   
-    df['anomaly']=False
+    
+    df_category_features=['resumed','established','validation_status','version']
+    
+  
+    
+    df['cert_anomaly']=float(0)
+    df['cert_anomaly_freq']=float(0)
+ 
     df2=df.loc[~df.issuer.isnull()]
-    # # grouping dns flows by orig-resp pairs         
+    # # grouping ssl flows by orig-resp pairs         
     gb1=df2.groupby(['id_resp_h'])
     for resp in gb1.groups:
         gtemp=gb1.get_group(resp)
         gb2=gtemp.groupby(['validation_status','issuer'])
         if len(gb2.groups)>1:
+            # get the issuer whose validation status is 'self signed'
             dict_key_lst=[x for x in gb2.groups.keys() if 'self signed certificate' in x]
             if len(dict_key_lst)>0:
+                #get the transactions whose issuer of the cert with 'self signed validation' status
                 gtemp2=gb2.get_group((dict_key_lst[0][0],dict_key_lst[0][1]))
-                df.loc[gtemp2.index.values,'anomaly']=True
+                df.loc[gtemp2.index.values,'cert_anomaly']=1
                 
-            
     
-    
-    
-    msg='start single line write to mongo . Line129: directory= '+pcap_dir+':index='+str(index)
-    myLogger.error(msg)
-    
- 
-    bin_lst=list(df2._id)
+    cert_anomaly_values=df.cert_anomaly.value_counts()
+    if cert_anomaly_values.shape[0] >1:
+        for val in cert_anomaly_values.index.values:
+            df.loc[df.cert_anomaly==val,'cert_anomaly_freq']=cert_anomaly_values.loc[val]/df_cnt
+
         
     #df2.to_csv(str('df_'+pcap_dir+'_ssl_'+'bin_'+str(index)+'.csv'))
+    bin_lst=list(df._id)
+
     service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
     msg='start bulk write to mongo. Line246: directory= '+pcap_dir+'_ssl'+':index='+str(index)
     myLogger.error(msg)
     
-    df2=df2.fillna(0)  
+    df=df.fillna(0)  
    
     from pymongo import UpdateOne
     time_bulk=timeit.default_timer()
@@ -146,7 +187,9 @@ for index in range(intervals):
     d=0
     write_list=list()
     for idd in bin_lst:
-        write_list.append(UpdateOne({'_id':idd},{'$set':{'anomaly':json_bool(df2.loc[df2._id==idd,'anomaly'].values[0])}}))
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'cert_anomaly':df.loc[df._id==idd,'cert_anomaly'].values[0]
+                                                        ,'cert_anomaly_freq':df.loc[df._id==idd,'cert_anomaly_freq'].values[0]
+                                                        }}))
     
     
         if (len(write_list)%500==0):
@@ -156,7 +199,7 @@ for index in range(intervals):
                 error=str(e)+':pcap_dir='+pcap_dir+':bin='+str(bin)+':batch='+str(d)+':error on bulk write to mongo'
                 myLogger.error(error)
             write_list=list() 
-            msg='wrote bulk to mongo. Line159: directory= '+pcap_dir+':index='+str(index)+':batch='+str(d)+': write_list size:'+str(len(write_list))
+            msg='wrote bulk to mongo. Line159: directory= '+pcap_dir+'_ssl'+':index='+str(index)+':batch='+str(d)+': write_list size:'+str(len(write_list))
             d+=1
             myLogger.error(msg)
     if (len(write_list)>0):

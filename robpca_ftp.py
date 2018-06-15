@@ -61,7 +61,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00005'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -212,7 +212,7 @@ for index in range(intervals):
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
-    if df_cnt<100:
+    if df_cnt<40:
         first_ts+=time_interval
         continue
     
@@ -232,14 +232,12 @@ for index in range(intervals):
     for feature in jsd_category_features:
             df2[feature]=0.0 
             
-    # # grouping http flows by orig-resp pairs         
+    # # grouping ftp flows by orig-resp pairs         
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     for pair in gb.groups:
         gtemp=gb.get_group(pair)
-        
         gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
         for feature in total_category_features:
-            gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
             gtemp[feature+'_jsd']=jsd(gtemp[feature+'_freq'],gtemp[feature+'_pair_freq'])
         
         for ind in gtemp.index.values:
@@ -315,7 +313,7 @@ for index in range(intervals):
     # # find df_clean index that was used for mcd
     mcd_index=df3_n.iloc[H1==1].index.values
     
-    df2["mcd"]=False
+    df2['mcd']=False
     df2.loc[df3_n.iloc[H1==1].index.values,'mcd']=True
     
     
@@ -325,7 +323,7 @@ for index in range(intervals):
  
     bin_lst=list(df._id)
         
-    df.to_csv(str('df_'+pcap_dir+'_ftp_'+'bin_'+str(index)+'.csv'))
+    df2.to_csv(str('df_'+pcap_dir+'_ftp_'+'bin_'+str(index)+'.csv'))
     service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
     msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_ftp'+':index='+str(index)
@@ -340,7 +338,8 @@ for index in range(intervals):
     d=0
     write_list=list()
     for idd in bin_lst:
-        write_list.append(UpdateOne({'_id':idd},{'$set':{ 'arg_length':df2.loc[df2._id==idd,  'arg_length'].values[0]
+        write_list.append(UpdateOne({'_id':idd},{'$set':{ 'mcd':json_bool(df2.loc[df2._id==idd,  'mcd'].values[0])
+                                                    ,'arg_length':df2.loc[df2._id==idd,  'arg_length'].values[0]
                                                     , 'command_freq':df2.loc[df2._id==idd, 'command_freq'].values[0]
                                                     , 'user_freq':df2.loc[df2._id==idd, 'user_freq'].values[0]
                                                     , 'password_freq':df2.loc[df2._id==idd, 'password_freq'].values[0]

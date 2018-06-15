@@ -67,7 +67,7 @@ def json_bool(obj):
 
 
 
-pcap_dirs= ['maccdc2012_00001','maccdc2012_00002']#,'maccdc2012_00003','maccdc2012_00004']
+pcap_dirs= ['maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']#s,'maccdc2012_00004']
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -147,7 +147,7 @@ for srv in services:
             df =  pd.DataFrame(list(doc_tt)) 
             # # number of flows in bin
             df_cnt=df.shape[0]
-            if df_cnt<100:
+            if df_cnt<30:
                 first_ts+=time_interval
                 continue
             df_s1=pd.Series([service_collection_name,
