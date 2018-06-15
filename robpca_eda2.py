@@ -121,6 +121,7 @@ services=['http','ftp','dns']#'conn','ssl',
 for srv in services:
     for pp in pcap_dirs:
         service_collection_name=pp+'_'+srv
+        
         service_collection = get_db()[service_collection_name]
         #doc_t=service_collection.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
         # # find first timestamp
@@ -133,6 +134,8 @@ for srv in services:
         for dd in last_doc: last_ts=dd['ts']
         
         intervals=math.floor((last_ts-first_ts)/time_interval)
+        if intervals<1:
+            continue
         df_eda_cols=['collection','bin','count','attack_bool_count','mcd','mcd_attack_pcnt','SD_anomaly','SD_anomaly_recall','SD_anomaly_percision','OD_anomaly','OD_anomaly_recall','OD_anomaly_percision','SD_F1','OD_F1']
         
         for index in range(intervals):
@@ -147,28 +150,49 @@ for srv in services:
             df =  pd.DataFrame(list(doc_tt)) 
             # # number of flows in bin
             df_cnt=df.shape[0]
-            if df_cnt<30:
+            if df_cnt<100:
                 first_ts+=time_interval
                 continue
+            
+            if df.loc[df.SD_anomaly=='true'].shape[0]>0:
+                SD_precision=df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD_anomaly=='true'].shape[0]
+            else:
+                SD_precision=0
+                
+            if df.loc[df.attack_bool==True].shape[0]>0:
+                SD_recall=df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0]
+                mcd_attacks=df.loc[(df.mcd=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0]
+                OD_recall=df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0]
+            else:
+                SD_recall=0
+                mcd_attacks=0
+                OD_recall=0
+            
             df_s1=pd.Series([service_collection_name,
                                 index,
                                 df_cnt,
                                 df.loc[df.attack_bool==True].shape[0],
                                 df.loc[df.mcd=='true'].shape[0],
-                                df.loc[(df.mcd=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                                mcd_attacks,
                                 df.loc[df.SD_anomaly=='true'].shape[0],
-                                df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
-                                df.loc[(df.SD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.SD_anomaly=='true'].shape[0],
+                                SD_recall,
+                                SD_precision,
                                 df.loc[df.OD_anomaly=='true'].shape[0],
-                                df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.attack_bool==True].shape[0],
+                                OD_recall,
                                 df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0],
                                 0,
                                 0
                                ])
             df_r1=pd.DataFrame(df_s1).T
             df_r1.columns=df_eda_cols
-            SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
-            OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+            if SD_precision>0:
+                SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
+            else:
+                SD_F1=0
+            if OD_recall>0:
+                OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+            else:
+                OD_F1=0
             df_r1['SD_F1']=SD_F1
             df_r1['OD_F1']=OD_F1
             df_eda=df_eda.append(df_r1)
@@ -179,15 +203,28 @@ for srv in services:
         anomal_attacks_SD=(df_eda_pp.SD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
         attacks=df_eda_pp.attack_bool_count.sum()
         anomalies_SD=df_eda_pp.SD_anomaly.sum()
-        recall_SD=anomal_attacks_SD/attacks
-        precision_SD=anomal_attacks_SD/anomalies_SD
         anomal_attacks_OD=(df_eda_pp.OD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
-        attacks=df_eda_pp.attack_bool_count.sum()
         anomalies_OD=df_eda_pp.OD_anomaly.sum()
-        recall_OD=anomal_attacks_OD/attacks
-        precision_OD=anomal_attacks_OD/anomalies_SD
-        F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
-        F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+        if attacks==0:
+            recall_SD=0
+            recall_OD=0
+        else:
+            recall_SD=anomal_attacks_SD/attacks
+            recall_OD=anomal_attacks_OD/attacks
+        if anomalies_SD>0:
+            precision_SD=anomal_attacks_SD/anomalies_SD
+            F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
+        else:
+            precision_SD=0
+            F1_SD=0
+        
+        if anomalies_OD>0:
+            precision_OD=anomal_attacks_OD/anomalies_OD
+            F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+        else:
+            precision_OD=0
+            F1_OD=0
+        
         df1=pd.Series(['null',0,0,0,0,0,0,0,0,0,0,0,F1_SD,F1_OD])
         df11=pd.DataFrame(df1).T
         df11.columns=df_eda_cols

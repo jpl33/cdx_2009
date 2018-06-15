@@ -61,7 +61,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00005'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -300,7 +300,7 @@ for index in range(intervals):
     df2.loc[df2.SD>SD_th[0],'SD_anomaly']=True
     df2['OD']=OD
     df2['OD_anomaly']=False
-    df2.loc[df2.OD>SD_th[0],'OD_anomaly']=True
+    df2.loc[df2.OD>OD_th[0],'OD_anomaly']=True
     # # find the most influential feature for anomalous SD values
     feat_vec_sd=which_feature_SD(df3_n.loc[df2.SD>SD_th[0],:],pca_cov)
     df2['SD_feature']=0.0
