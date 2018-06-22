@@ -234,7 +234,7 @@ for index in range(intervals):
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
     df_cnt=df.shape[0]
-    if df_cnt<100:
+    if df_cnt<20:
         first_ts+=time_interval
         continue
     
@@ -254,17 +254,26 @@ for index in range(intervals):
     # # prepping df2 pairwise jsd feature columns
     jsd_category_features=[x+'_jsd'  for x in total_category_features]
     for feature in jsd_category_features:
-            df2[feature]=0.0 
-            
+            df2[feature]=0.0
+    
+    
+        
     # # grouping http flows by orig-resp pairs         
     gb=df2.groupby(['id_orig_h','id_resp_h'])
+    dff=pd.DataFrame(index=gb.groups.keys())
+    success=df2.loc[df2.status_code==200].shape[0]
     for pair in gb.groups:
         gtemp=gb.get_group(pair)
+        if success>0:
+            dff.loc[pair,'success_freq']=gtemp.loc[gtemp.status_code==200].shape[0]/success
+        else:
+            dff['success_freq']=float(0)
+        dff.loc[pair,'attacks']=gtemp.loc[gtemp.attack_bool==True,:].shape[0]
         gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
         for feature in total_category_features:
             gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
             gtemp[feature+'_jsd']=jsd(gtemp[feature+'_freq'],gtemp[feature+'_pair_freq'])
-        
+        df2.loc[gtemp.index.values,'request_ts_diff_median']=gtemp.ts.diff().median()
         for ind in gtemp.index.values:
             for feature in total_category_features:
                 fi=total_category_features.index(feature)
@@ -272,6 +281,21 @@ for index in range(intervals):
                 df2.loc[ind,jsd_category_features[fi]]=gtemp.loc[ind,jsd_category_features[fi]]
 
         
+    
+     # # sort the dataframe for the highest success_freq;
+    
+    dff=dff.sort_values(by='success_freq', ascending = False)
+    # # total number of flows of pairs with success_freq less than 90% of all suceesses
+    base_success_freq=0
+    base_pairs=list()
+    for nn in dff.index:
+        base_success_freq+=float(dff.loc[dff.index==nn].success_freq)
+        base_pairs.append(nn)
+        if base_success_freq>0.9:
+            break
+    outly_pairs=list(set(gb.groups.keys())-set(base_pairs))
+    msg='finish looking for bad flows. Line252: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
 
     ind_uri=df2.loc[~df2.uri.isnull()].index.values
     uri_ent_vec=df2.loc[ind_uri,'uri'].apply(ltr_entropy).apply(pd.Series)
@@ -291,7 +315,7 @@ for index in range(intervals):
     
     username_columns=['username_freq','username_pair_freq', 'username_jsd']
     all_feature_columns=['request_body_len', 'response_body_len', 
-       'uri_length','post_content_length', 'method_freq',
+       'uri_length','request_ts_diff_median','post_content_length', 'method_freq',
        'status_code_freq', 'user_agent_freq', 
        'orig_mime_types_freq', 'resp_mime_types_freq', 'method_pair_freq',
        'status_code_pair_freq', 'user_agent_pair_freq', 'orig_mime_types_pair_freq',
@@ -301,11 +325,19 @@ for index in range(intervals):
        'uri_punctuation_entropy', 'post_content_entropy',
        'post_content_hexadecimal_entropy',
        'post_content_punctuation_entropy']
-    http_feature_columns=[ft for ft in all_feature_columns if ft in df.columns]
+    
     if username_flag:
         all_feature_columns=all_feature_columns+username_columns
     
-    df3=df2[all_feature_columns]
+    gbdict=dict(gb.groups)
+    df_clean=df2.copy()
+    for ppn in outly_pairs:
+        # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
+        df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
+    
+    
+    df_clean=df_clean.fillna(0)
+    df3=df_clean[all_feature_columns]
     df3=df3.fillna(0)
     df3_n=(df3-df3.mean() )/df3.std(ddof=0)
     df3_n=df3_n.fillna(0)
@@ -317,7 +349,7 @@ for index in range(intervals):
     
     rpy2.robjects.numpy2ri.activate()
     rospca=importr("rospca")
-    rpca=rospca.robpca(x=df_mat,mcd=True,ndir=5000)
+    rpca=rospca.robpca(x=df_mat,mcd=False,ndir=5000)
     loadings=np.array(rpca[0])
     e_vals=np.array(rpca[1])
     scores=np.array(rpca[2])
@@ -382,7 +414,8 @@ for index in range(intervals):
     d=0
     write_list=list()
     for idd in bin_lst:
-        write_list.append(UpdateOne({'_id':idd},{'$set':{'post_content_length':df2.loc[df2._id==idd,'post_content_length'].values[0]
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'request_ts_diff_median':df2.loc[df2._id==idd,'request_ts_diff_median'].values[0]
+                                                     ,'post_content_length':df2.loc[df2._id==idd,'post_content_length'].values[0]
                                                     ,'method_freq':df2.loc[df2._id==idd,'method_freq'].values[0]
                                                     ,'status_code_freq':df2.loc[df2._id==idd,'status_code_freq'].values[0]
                                                     ,'user_agent_freq':df2.loc[df2._id==idd,'user_agent_freq'].values[0]
