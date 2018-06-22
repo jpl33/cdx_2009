@@ -366,38 +366,69 @@ for index in range(intervals):
    
 
     
+     # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
+    sc_3=(df3_n.as_matrix()-center).dot(loadings)
+    sd_3=pd.DataFrame()
+    
+    msg='start first OD, SD compute. Line310: directory= '+pcap_dir+':index='+str(index)
+    myLogger.error(msg)
+    
+    # # compute SD - Square mahalanobis Distance, for each PCA loading
+    for cc in range(0,sc_3.shape[1]):
+        sd_3[cc]=sc_3[:,cc]**2/e_vals[cc]
+        
+    # # sum the SD's up and take their  sqrt() for the total SD
+    sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
+    sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
+    sd_3['sd_flag']=1
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
+    
     # #  compute the PCA sub-space covariance matrix
     num_e_vals=e_vals.shape[0]
     lambda_mat=e_vals*np.identity(num_e_vals)    
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
-    # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
-    df2['SD']=SD
-    df2['SD_anomaly']=False
-    df2.loc[df2.SD>SD_th[0],'SD_anomaly']=True
-    df2['OD']=OD
-    df2['OD_anomaly']=False
-    df2.loc[df2.OD>SD_th[0],'OD_anomaly']=True
+    
     # # find the most influential feature for anomalous SD values
-    feat_vec_sd=which_feature_SD(df3_n.loc[df2.SD>SD_th[0],:],pca_cov)
-    df2['SD_feature']=0.0
-    df2.loc[df2.SD>SD_th[0],'SD_feature']=feat_vec_sd
+    feat_vec_sd=which_feature_SD(df3_n.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
+    sd_3['SD_feature']=0
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'SD_feature']=feat_vec_sd
+    
+    # # multiply PCA scores by the PCA loadings to get predicted X, "X-hat"
+    # # then, sbtract that from the original data to gat the PCA residuals or Orthogonal Distance, Od
+    df3_od=(df3_n-center)-(loadings.dot(sc_3.T)).T
+    sd_3['od_mine']=0
+    sd_3['od_mine']=np.sqrt((df3_od**2).sum(axis=1))
+    sd_3['od_flag']=1
+    sd_3.loc[sd_3.od_mine>OD_th[0],'od_flag']=0
     # # find the most influential feature for anomalous OD values
-    feat_vec_od=which_feature_OD(df3_n.loc[df2.OD>OD_th[0],:])
-    df2['OD_feature']=0.0
-    df2.loc[df2.OD>OD_th[0],'OD_feature']=feat_vec_od
+    feat_vec_od=which_feature_OD(df3_od.loc[sd_3.od_mine>OD_th[0],:])
+    sd_3['OD_feature']=0
+    sd_3.loc[sd_3.od_mine>OD_th[0],'OD_feature']=feat_vec_od
+   
+    df2['SD']=sd_3.sd_mine
+    df2['SD_anomaly']=False
+    df2.loc[sd_3.sd_flag==0,'SD_anomaly']=True
+    df2['SD_feature']=False
+    df2.loc[sd_3.SD_feature!=0,'SD_feature']=feat_vec_sd
+    df2['OD']=sd_3.od_mine
+    df2['OD_anomaly']=False
+    df2.loc[sd_3.od_flag==0,'OD_anomaly']=True
+    df2['OD_feature']=False
+    df2.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
     
     # # find df_clean index that was used for mcd
+    #mcd_index=df3_norm.iloc[H1==1].index.values
     mcd_index=df3_n.iloc[H1==1].index.values
     
-    df2["mcd"]=False
+    df2['mcd']=False
+    #df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
     df2.loc[df3_n.iloc[H1==1].index.values,'mcd']=True
-    
-    
-    msg='start single line write to mongo . Line346: directory= '+pcap_dir+':index='+str(index)
+     
+    msg='start single line write to mongo . Line470: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
  
-    bin_lst=list(df._id)
+    bin_lst=list(df2._id)
         
     df.to_csv(str('df_'+pcap_dir+'_http_'+'bin_'+str(index)+'.csv'))
     service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
