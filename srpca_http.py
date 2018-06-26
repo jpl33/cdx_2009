@@ -65,7 +65,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00003'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -331,10 +331,9 @@ for index in range(intervals):
     
     gbdict=dict(gb.groups)
     df_clean=df2.copy()
-    if df_cnt>80:
-        for ppn in outly_pairs:
-            # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-            df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
+    for ppn in outly_pairs:
+        # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
+        df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
     
     df_clean=df_clean[all_feature_columns]
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
@@ -351,23 +350,32 @@ for index in range(intervals):
     myLogger.error(msg)
     
     rpy2.robjects.numpy2ri.activate()
-    rospca=importr("rospca")
-    rpca=rospca.robpca(x=df_mat,mcd=False,ndir=5000)
-    loadings=np.array(rpca[0])
-    e_vals=np.array(rpca[1])
-    scores=np.array(rpca[2])
-    center=np.array(rpca[3])
-    H0=np.array(rpca[5])
-    H1=np.array(rpca[6])
-    SD=np.array(rpca[9])
-    OD=np.array(rpca[10])
-    SD_th=np.array(rpca[11])
-    OD_th=np.array(rpca[12])
-    SD_flag=np.array(rpca[13])
-    OD_flag=np.array(rpca[14])
+    rspca=importr("rrcovHD")
+    rpca=rspca.SPcaGrid(x=df_mat,method='qn')
+    all_loadings=np.array(rpca.do_slot('loadings'))
+    e_vals=np.array(rpca.do_slot('eigenvalues'))
+    scores=np.array(rpca.do_slot('scores'))
+    center=np.array(rpca.do_slot('center'))
+    SD=np.array(rpca.do_slot('sd'))
+    OD=np.array(rpca.do_slot('od'))
+    SD_th=np.array(rpca.do_slot('cutoff_sd'))
+    OD_th=np.array(rpca.do_slot('cutoff_od'))
+    flag=np.array(rpca.do_slot('flag'))
+    SD_flag=np.repeat(0,df_cnt)
+    OD_flag=np.repeat(0,df_cnt)
     
-   
-
+    e_vals_relative=e_vals/sum(e_vals)
+    cum_variance=0
+    k=0
+    loadings=list()
+    for e_val in e_vals_relative:
+        cum_variance+=e_val
+        k+=1
+        loadings.append(all_loadings[:,k])
+        if cum_variance>0.8:
+            break
+    loadings=np.array(loadings)
+    
     
      # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_n.as_matrix()-center).dot(loadings)
