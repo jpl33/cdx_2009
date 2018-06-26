@@ -2,7 +2,7 @@ import pandas as pd
 import math
 import numpy as np
 import scipy as sci
-
+import scipy.stats as stat
 import json
 import pymongo
 
@@ -351,18 +351,19 @@ for index in range(intervals):
     
     rpy2.robjects.numpy2ri.activate()
     rspca=importr("rrcovHD")
-    rpca=rspca.SPcaGrid(x=df_mat,method='qn')
+    rpca=rspca.SPcaGrid(x=df_mat,method='qn',k=0)
     all_loadings=np.array(rpca.do_slot('loadings'))
     e_vals=np.array(rpca.do_slot('eigenvalues'))
     scores=np.array(rpca.do_slot('scores'))
     center=np.array(rpca.do_slot('center'))
     SD=np.array(rpca.do_slot('sd'))
     OD=np.array(rpca.do_slot('od'))
-    SD_th=np.array(rpca.do_slot('cutoff_sd'))
-    OD_th=np.array(rpca.do_slot('cutoff_od'))
+    SD_th_p=np.array(rpca.do_slot('cutoff.sd'))
+    OD_th=np.array(rpca.do_slot('cutoff.od'))
     flag=np.array(rpca.do_slot('flag'))
     SD_flag=np.repeat(0,df_cnt)
     OD_flag=np.repeat(0,df_cnt)
+    
     
     e_vals_relative=e_vals/sum(e_vals)
     cum_variance=0
@@ -374,8 +375,16 @@ for index in range(intervals):
         loadings.append(all_loadings[:,k])
         if cum_variance>0.8:
             break
-    loadings=np.array(loadings)
-    
+    loadings=np.array(loadings).T
+    e_vals=np.append(e_vals,np.repeat(0,loadings.shape[0]-e_vals.shape[0]))
+#    rob_base=importr('robustbase')
+#    d1=pd.DataFrame(OD)
+#    d1=d1.as_matrix()
+#    mcd=rob_base.covMcd(x=d1)
+#
+#    mu_od=np.array(mcd[4]) 
+#    s_od=np.array(mcd[3])
+#    OD_th=(mu_od+(s_od*sci.stats.norm.ppf(0.975)) )^(3/2)
     
      # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_n.as_matrix()-center).dot(loadings)
@@ -392,17 +401,18 @@ for index in range(intervals):
     sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
     sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
     sd_3['sd_flag']=1
-    sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
+    SD_th=math.sqrt(stat.chi2.ppf(0.975,df=k))
+    sd_3.loc[sd_3.sd_mine>SD_th,'sd_flag']=0
     
     # #  compute the PCA sub-space covariance matrix
     num_e_vals=e_vals.shape[0]
-    lambda_mat=e_vals*np.identity(num_e_vals)    
+    lambda_mat=e_vals[:k].T*np.identity(k)    
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
     
     # # find the most influential feature for anomalous SD values
-    feat_vec_sd=which_feature_SD(df3_n.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
+    feat_vec_sd=which_feature_SD(df3_n.loc[sd_3.sd_mine>SD_th,:],pca_cov)
     sd_3['SD_feature']=0
-    sd_3.loc[sd_3.sd_mine>SD_th[0],'SD_feature']=feat_vec_sd
+    sd_3.loc[sd_3.sd_mine>SD_th,'SD_feature']=feat_vec_sd
     
     # # multiply PCA scores by the PCA loadings to get predicted X, "X-hat"
     # # then, sbtract that from the original data to gat the PCA residuals or Orthogonal Distance, Od
@@ -429,11 +439,11 @@ for index in range(intervals):
     
     # # find df_clean index that was used for mcd
     #mcd_index=df3_norm.iloc[H1==1].index.values
-    mcd_index=df3_n.iloc[H1==1].index.values
-    
-    df2['mcd']=False
-    #df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
-    df2.loc[df_c_n.iloc[H1==1].index.values,'mcd']=True
+#    mcd_index=df3_n.iloc[H1==1].index.values
+#    
+#    df2['mcd']=False
+#    #df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
+#    df2.loc[df_c_n.iloc[H1==1].index.values,'mcd']=True
      
     msg='start single line write to mongo . Line470: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
@@ -443,6 +453,7 @@ for index in range(intervals):
     
     df2=df2.fillna(0.0)    
     df2.to_csv(str('df_'+pcap_dir+'_http_'+'bin_'+str(index)+'.csv'))
+    
     service_coll.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
 
     msg='start bulk write to mongo. Line355: directory= '+pcap_dir+'_http'+':index='+str(index)
@@ -511,7 +522,7 @@ for index in range(intervals):
     elapsed_bulk=timeit.default_timer()-time_bulk
     
     ld2=pd.DataFrame(loadings,index=all_feature_columns)
-    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th[0],'HTTP_OD_threshold':OD_th[0]}},upsert=False)
+    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th,'HTTP_OD_threshold':OD_th[0]}},upsert=False)
     msg='finished processing bin. Line421: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
