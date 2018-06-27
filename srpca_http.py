@@ -65,7 +65,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00003'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -257,11 +257,16 @@ for index in range(intervals):
             df2[feature]=0.0
     
     
-        
-    # # grouping http flows by orig-resp pairs         
+#    import hashlib
+#    mystring = input('Enter String to hash: ')
+#    # Assumes the default UTF-8
+#    hash_object = hashlib.md5(mystring.encode())
+#    print(hash_object.hexdigest())
+#    # # grouping http flows by orig-resp pairs         
     gb=df2.groupby(['id_orig_h','id_resp_h'])
     dff=pd.DataFrame(index=gb.groups.keys())
     success=df2.loc[df2.status_code==200].shape[0]
+    dff['collective_uri_entropy']=float(0)
     for pair in gb.groups:
         gtemp=gb.get_group(pair)
         if success>0:
@@ -269,6 +274,11 @@ for index in range(intervals):
         else:
             dff['success_freq']=float(0)
         dff.loc[pair,'attacks']=gtemp.loc[gtemp.attack_bool==True,:].shape[0]
+        ur_coll=gtemp.uri.value_counts()
+        ur_coll_prob=ur_coll/gtemp.shape[0]
+        ur_coll_ent = [ p * math.log(p) / math.log(2.0) for p in ur_coll_prob ]
+        ur_coll_ent_sum=-sum(ur_coll_ent)
+        dff.loc[pair,'collective_uri_entropy']=ur_coll_ent_sum
         gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
         for feature in total_category_features:
             gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
@@ -331,10 +341,11 @@ for index in range(intervals):
     
     gbdict=dict(gb.groups)
     df_clean=df2.copy()
-    for ppn in outly_pairs:
-        # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-        df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
-    
+    if df_cnt>80:
+        for ppn in outly_pairs:
+            # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
+            df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
+        
     df_clean=df_clean[all_feature_columns]
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
     df_c_n=df_c_n.fillna(0)
@@ -401,8 +412,8 @@ for index in range(intervals):
     sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
     sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
     sd_3['sd_flag']=1
-    SD_th=math.sqrt(stat.chi2.ppf(0.975,df=k))
-    sd_3.loc[sd_3.sd_mine>SD_th,'sd_flag']=0
+    SD_th=np.array([math.sqrt(stat.chi2.ppf(0.975,df=k))])
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
     
     # #  compute the PCA sub-space covariance matrix
     num_e_vals=e_vals.shape[0]
@@ -410,9 +421,9 @@ for index in range(intervals):
     pca_cov=(loadings.dot(lambda_mat)).dot(loadings.T)
     
     # # find the most influential feature for anomalous SD values
-    feat_vec_sd=which_feature_SD(df3_n.loc[sd_3.sd_mine>SD_th,:],pca_cov)
+    feat_vec_sd=which_feature_SD(df3_n.loc[sd_3.sd_mine>SD_th[0],:],pca_cov)
     sd_3['SD_feature']=0
-    sd_3.loc[sd_3.sd_mine>SD_th,'SD_feature']=feat_vec_sd
+    sd_3.loc[sd_3.sd_mine>SD_th[0],'SD_feature']=feat_vec_sd
     
     # # multiply PCA scores by the PCA loadings to get predicted X, "X-hat"
     # # then, sbtract that from the original data to gat the PCA residuals or Orthogonal Distance, Od
@@ -464,6 +475,7 @@ for index in range(intervals):
     from pymongo import UpdateOne
     time_bulk=timeit.default_timer()
     
+    service_coll=get_db()[service_coll.name+'_pp']
     bulk=service_coll.initialize_unordered_bulk_op()
     d=0
     write_list=list()
@@ -522,7 +534,7 @@ for index in range(intervals):
     elapsed_bulk=timeit.default_timer()-time_bulk
     
     ld2=pd.DataFrame(loadings,index=all_feature_columns)
-    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th,'HTTP_OD_threshold':OD_th[0]}},upsert=False)
+    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'HTTP_PCs':ld2.to_json(),'HTTP_SD_threshold':SD_th[0],'HTTP_OD_threshold':OD_th[0]}},upsert=False)
     msg='finished processing bin. Line421: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
