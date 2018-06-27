@@ -176,18 +176,17 @@ def ltr_entropy(string_mine):
         
         hex_entropy=[dict_entropy[x] if x not in string.printable else 0 for x in dict_entropy]
         
+        number_entropy=[dict_entropy[x] if x in string.digits else 0 for x in dict_entropy]
+        
         punctuation_entropy=[dict_entropy[x] if x  in string.punctuation else 0 for x in dict_entropy]
         
         total_entropy=-sum(entropy)
         if total_entropy>0:
-            return [total_entropy,-sum(hex_entropy)/total_entropy,-sum(punctuation_entropy)/total_entropy]
+            return [total_entropy,-sum(hex_entropy)/total_entropy,-sum(punctuation_entropy)/total_entropy,-sum(number_entropy)/total_entropy]
         else:
-            return [float(total_entropy),float(hex_entropy[0]),float(punctuation_entropy[0])]
+            return [float(total_entropy),float(hex_entropy[0]),float(punctuation_entropy[0]),float(number_entropy[0])]
 
-def is_numeric_uri(uri_str):
-    re1=re.findall('\.[0-9]{1,3}',uri_str)
-    
-    return (len(re1)==3)
+
 
 df_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
@@ -279,6 +278,7 @@ for index in range(intervals):
         ur_coll_ent = [ p * math.log(p) / math.log(2.0) for p in ur_coll_prob ]
         ur_coll_ent_sum=-sum(ur_coll_ent)
         dff.loc[pair,'collective_uri_entropy']=ur_coll_ent_sum
+        df2.loc[(df2.id_orig_h==pair[0])&(df2.id_resp_h==pair[1]),'collective_uri_entropy']=ur_coll_ent_sum
         gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
         for feature in total_category_features:
             gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
@@ -313,6 +313,7 @@ for index in range(intervals):
     df2['uri_entropy']=uri_ent_vec.loc[:,0]
     df2['uri_hexadecimal_entropy']=uri_ent_vec.loc[:,1]
     df2['uri_punctuation_entropy']=uri_ent_vec.loc[:,2]
+    df2['uri_number_entropy']=uri_ent_vec.loc[:,3]
     
     ind_post_content=df2.loc[~df2.post_content.isnull()].index.values
     post_ent_vec=df2.loc[ind_post_content,'post_content'].apply(ltr_entropy).apply(pd.Series)
@@ -332,7 +333,7 @@ for index in range(intervals):
        'resp_mime_types_pair_freq', 'method_jsd', 'status_code_jsd',
        'user_agent_jsd', 'orig_mime_types_jsd',
        'resp_mime_types_jsd', 'uri_entropy', 'uri_hexadecimal_entropy',
-       'uri_punctuation_entropy', 'post_content_entropy',
+       'uri_punctuation_entropy','uri_number_entropy', 'post_content_entropy',
        'post_content_hexadecimal_entropy',
        'post_content_punctuation_entropy']
     
@@ -351,8 +352,9 @@ for index in range(intervals):
     df_c_n=df_c_n.fillna(0)
     df3=df2[all_feature_columns]
     df3_n=(df3-df_clean.mean() )/df_clean.std(ddof=0)
+    #df3_n=(df3-df3.mean() )/df3.std(ddof=0)
     df3_n=df3_n.fillna(0)
-    #df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
+
     dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
         
     df_mat=df_c_n.as_matrix()
