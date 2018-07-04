@@ -65,7 +65,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00002'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -266,6 +266,7 @@ for index in range(intervals):
     dff=pd.DataFrame(index=gb.groups.keys())
     success=df2.loc[df2.status_code==200].shape[0]
     dff['collective_uri_entropy']=float(0)
+    dff['num_flows']=float(0)
     for pair in gb.groups:
         gtemp=gb.get_group(pair)
         if success>0:
@@ -278,6 +279,7 @@ for index in range(intervals):
         ur_coll_ent = [ p * math.log(p) / math.log(2.0) for p in ur_coll_prob ]
         ur_coll_ent_sum=-sum(ur_coll_ent)
         dff.loc[pair,'collective_uri_entropy']=ur_coll_ent_sum
+        dff.loc[pair,'num_flows']=gtemp.shape[0]
         df2.loc[(df2.id_orig_h==pair[0])&(df2.id_resp_h==pair[1]),'collective_uri_entropy']=ur_coll_ent_sum
         gtemp=pair_category_frequency_vectors(gtemp,total_category_features)
         for feature in total_category_features:
@@ -295,14 +297,20 @@ for index in range(intervals):
      # # sort the dataframe for the highest success_freq;
     
     dff=dff.sort_values(by='success_freq', ascending = False)
+    dff.to_csv('dff_'+pcap_dir+'_bin_'+str(index)+'.csv')
     # # total number of flows of pairs with success_freq less than 90% of all suceesses
-    base_success_freq=0
+    iqr=sci.stats.iqr(dff.collective_uri_entropy)
+    q3=dff.collective_uri_entropy.quantile(0.75)
+    dff['collective_uri_anomaly']=float(0)
+    dff_sum=dff.num_flows.sum()
     base_pairs=list()
+    
     for nn in dff.index:
-        base_success_freq+=float(dff.loc[dff.index==nn].success_freq)
-        base_pairs.append(nn)
-        if base_success_freq>0.9:
-            break
+        if dff.loc[dff.index==nn,'collective_uri_entropy'].item()>(q3+iqr): 
+            dff.loc[dff.index==nn,'collective_uri_anomaly']=float(1)
+        else:
+            base_pairs.append(nn)
+            
     outly_pairs=list(set(gb.groups.keys())-set(base_pairs))
     msg='finish looking for bad flows. Line252: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
@@ -345,7 +353,8 @@ for index in range(intervals):
     if df_cnt>80:
         for ppn in outly_pairs:
             # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-            df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
+            if dff_sum-dff.loc[dff.index==ppn,'num_flows'].item()>0.5*dff_sum:
+                df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
         
     df_clean=df_clean[all_feature_columns]
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
@@ -390,14 +399,14 @@ for index in range(intervals):
             break
     loadings=np.array(loadings).T
     e_vals=np.append(e_vals,np.repeat(0,loadings.shape[0]-e_vals.shape[0]))
-#    rob_base=importr('robustbase')
-#    d1=pd.DataFrame(OD)
-#    d1=d1.as_matrix()
-#    mcd=rob_base.covMcd(x=d1)
-#
-#    mu_od=np.array(mcd[4]) 
-#    s_od=np.array(mcd[3])
-#    OD_th=(mu_od+(s_od*sci.stats.norm.ppf(0.975)) )^(3/2)
+    rob_base=importr('robustbase')
+    d1=pd.DataFrame(OD)
+    d1=d1.as_matrix()
+    mcd=rob_base.covMcd(x=d1)
+
+    mu_od=np.array(mcd[4]) 
+    s_od=np.array(mcd[3])
+    OD_th=(mu_od+(s_od*sci.stats.norm.ppf(0.975)) )**(3/2)
     
      # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_n.as_matrix()-center).dot(loadings)
@@ -482,7 +491,9 @@ for index in range(intervals):
     d=0
     write_list=list()
     for idd in bin_lst:
-        write_list.append(UpdateOne({'_id':idd},{'$set':{'post_content_length':df2.loc[df2._id==idd,'post_content_length'].values[0]
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'collective_uri_entropy':df2.loc[df2._id==idd,'collective_uri_entropy'].values[0]
+                                                    , 'uri_number_entropy':df2.loc[df2._id==idd,'uri_number_entropy'].values[0]
+                                                    ,'post_content_length':df2.loc[df2._id==idd,'post_content_length'].values[0]
                                                     ,'method_freq':df2.loc[df2._id==idd,'method_freq'].values[0]
                                                     ,'status_code_freq':df2.loc[df2._id==idd,'status_code_freq'].values[0]
                                                     ,'user_agent_freq':df2.loc[df2._id==idd,'user_agent_freq'].values[0]
