@@ -65,7 +65,7 @@ def json_bool(obj):
             return str(obj)
     return obj
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -216,6 +216,8 @@ for dd in last_doc: last_ts=dd['ts']
 
 intervals=math.floor((last_ts-first_ts)/time_interval)
 
+clean_data=False
+
 for index in range(intervals):
 #    if index<4:
 #        first_ts+=time_interval
@@ -348,26 +350,35 @@ for index in range(intervals):
     if username_flag:
         all_feature_columns=all_feature_columns+username_columns
     
-    gbdict=dict(gb.groups)
-    df_clean=df2.copy()
-    if df_cnt>80:
-        for ppn in outly_pairs:
-            # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-            if dff_sum-dff.loc[dff.index==ppn,'num_flows'].item()>0.5*dff_sum:
-                df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
-        
-    df_clean=df_clean[all_feature_columns]
-    df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
-    df_c_n=df_c_n.fillna(0)
+    
+    
     df3=df2[all_feature_columns]
-    df3_n=(df3-df_clean.mean() )/df_clean.std(ddof=0)
-    #df3_n=(df3-df3.mean() )/df3.std(ddof=0)
+    df3_n=(df3-df3.mean() )/df3.std(ddof=0)
+
+    gbdict=dict(gb.groups)
+    if clean_data:
+        df_clean=df2.copy()
+        if df_cnt>80:
+            for ppn in outly_pairs:
+                # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
+                if dff_sum-dff.loc[dff.index==ppn,'num_flows'].item()>0.5*dff_sum:
+                    df_clean=df_clean[~df_clean.index.isin(gbdict[ppn].values)]
+        
+        df_clean=df_clean[all_feature_columns]
+        df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
+        df_c_n=df_c_n.fillna(0)
+        df3_n=(df3-df_clean.mean() )/df_clean.std(ddof=0)
+        dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
+
+    
     df3_n=df3_n.fillna(0)
 
-    dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
-        
-    df_mat=df_c_n.as_matrix()
     
+    if clean_data:    
+        df_mat=df_c_n.as_matrix()
+    else:
+        df_mat=df3_n.as_matrix()
+        
     msg='start first robpca. Line296: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
@@ -381,7 +392,7 @@ for index in range(intervals):
     SD=np.array(rpca.do_slot('sd'))
     OD=np.array(rpca.do_slot('od'))
     SD_th_p=np.array(rpca.do_slot('cutoff.sd'))
-    OD_th=np.array(rpca.do_slot('cutoff.od'))
+    OD_th_p=np.array(rpca.do_slot('cutoff.od'))
     flag=np.array(rpca.do_slot('flag'))
     SD_flag=np.repeat(0,df_cnt)
     OD_flag=np.repeat(0,df_cnt)
@@ -399,14 +410,7 @@ for index in range(intervals):
             break
     loadings=np.array(loadings).T
     e_vals=np.append(e_vals,np.repeat(0,loadings.shape[0]-e_vals.shape[0]))
-    rob_base=importr('robustbase')
-    d1=pd.DataFrame(OD)
-    d1=d1.as_matrix()
-    mcd=rob_base.covMcd(x=d1)
-
-    mu_od=np.array(mcd[4]) 
-    s_od=np.array(mcd[3])
-    OD_th=(mu_od+(s_od*sci.stats.norm.ppf(0.975)) )**(3/2)
+    
     
      # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_n.as_matrix()-center).dot(loadings)
@@ -441,6 +445,22 @@ for index in range(intervals):
     df3_od=(df3_n-center)-(loadings.dot(sc_3.T)).T
     sd_3['od_mine']=0
     sd_3['od_mine']=np.sqrt((df3_od**2).sum(axis=1))
+    
+    rob_base=importr('robustbase')
+    if clean_data:
+        d1=pd.DataFrame(sd_3.loc[df_clean.index.values,'od_mine'].values)
+    else:
+        d1=pd.DataFrame(sd_3['od_mine'].values)
+    
+    d1=d1.as_matrix()
+    mcd=rob_base.covMcd(x=d1)
+
+    mu_od=np.array(mcd[4]) 
+    s_od=np.array(mcd[3])
+    OD_th=(mu_od+(s_od*sci.stats.norm.ppf(0.975)) )**(3/2)
+    OD_th=OD_th[0]
+    
+    
     sd_3['od_flag']=1
     sd_3.loc[sd_3.od_mine>OD_th[0],'od_flag']=0
     # # find the most influential feature for anomalous OD values

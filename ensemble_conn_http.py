@@ -103,15 +103,16 @@ def jsd(df,mcd):
     dff.fillna(0,inplace=True)
     return dff.jsd
 
-def normalise_gamma(sdx):                
+def normalise_gaussian(sdx):                
         sdx_mean=sdx.mean()
         sdx_std=sdx.std()
         z=(sdx-sdx_mean)/(sdx_std*math.sqrt(2) )
-        raw_norm=sci.special.erf(z)
-        raw_norm.loc[raw_norm<0]=0
-        return raw_norm
+        raw_norm_gauss=sci.special.erf(z)
+        norm_gauss=pd.Series(raw_norm_gauss)
+        norm_gauss.loc[norm_gauss<0]=0
+        return norm_gauss
 
-def normalise_gaussian(sdx):                
+def normalise_gamma(sdx):                
         sdx_mean=sdx.mean()
         sdx_std=sdx.std()
         k=(sdx_mean**2)/(sdx_std**2)
@@ -119,7 +120,8 @@ def normalise_gaussian(sdx):
         cdf_gamma_x=sci.special.gammainc(k,sdx.values/theta)
         cdf_gamma_mu=sci.special.gammainc(k,sdx_mean/theta)
         cdf_gamma_mu_arr=np.repeat(cdf_gamma_mu,sdx.shape[0])
-        norm_gamma=(  (cdf_gamma_x-cdf_gamma_mu_arr)/(1-cdf_gamma_mu)   )
+        raw_norm_gamma=(  (cdf_gamma_x-cdf_gamma_mu_arr)/(1-cdf_gamma_mu)   )
+        norm_gamma=pd.Series(raw_norm_gamma)
         norm_gamma.loc[norm_gamma<0]=0
         return norm_gamma
 
@@ -134,8 +136,8 @@ pcap_dirs= ['maccdc2012_00003']#'maccdc2012_00001','maccdc2012_00002','maccdc201
 
 for srv in services:
     for pp in pcap_dirs:
-        service_collection_name=pp+'_'+srv#+'_pp'
-        conn_collection_name=pp+'_conn'#+'_pp'
+        service_collection_name=pp+'_'+srv+'_pp'
+        conn_collection_name=pp+'_conn'+'_pp'
         service_collection = get_db()[service_collection_name]
         conn_collection = get_db()[conn_collection_name]
         #doc_t=service_collection.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
@@ -175,31 +177,21 @@ for srv in services:
             #srv_SD_th=collection_bins.aggregate({'$merge':{'pcap_dir':pp,'bin':index}},{'$project':'http_SD_th'})
             if srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]>0:
                 srv_SD_precision=srv_df.loc[(srv_df.SD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]
-                #χ2(ν) ∼ Γ(k = ν/2, θ = 2) 
-                #kˆ := µˆ2  /σˆ2 and θˆ := σˆ/µˆ2 
-                sdx=srv_df.SD
-                sdx_mean=sdx.mean()
-                sdx_std=sdx.std()
-                k=(sdx_mean**2)/(sdx_std**2)
-                theta=sdx_std/sdx_mean*2
-                cdf_gamma_x=sci.special.gammainc(k,sdx.values/theta)
-                cdf_gamma_mu=sci.special.gammainc(k,sdx_mean/theta)
-                cdf_gamma_mu_arr=np.repeat(cdf_gamma_mu,sdx.shape[0])
-                norm_gamma=(  (cdf_gamma_x-cdf_gamma_mu_arr)/(1-cdf_gamma_mu)   )
-                SD_norm=normalise_gamma(srv_df.SD)
+                srv_df['SD_norm']=normalise_gamma(srv_df.SD)
             else:
                 srv_SD_precision=0
             
-            if srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]>0:
-                srv_SD_precision=srv_df.loc[(srv_df.SD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]
-                
-                
-            OD_norm=normalise_gaussian(srv_df.OD)
+            if srv_df.loc[srv_df.OD_anomaly=='true'].shape[0]>0:
+                srv_OD_precision=srv_df.loc[(srv_df.OD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.OD_anomaly=='true'].shape[0]
+                srv_df['OD_norm']=normalise_gaussian(srv_df.OD)
+            
+            
             sdd=pd.DataFrame()
             sdd['attack']=srv_df.attack_bool
             sdd['SD']=srv_df.SD
-            sdd['norm_gamma']=norm_gamma
-                                
+            sdd['SD_norm']=srv_df.SD_norm
+            sdd['OD']=srv_df.OD
+            sdd['OD_norm']=srv_df.OD_norm                   
                 
             if srv_df.loc[srv_df.attack_bool==True].shape[0]>0:
                 srv_SD_recall=srv_df.loc[(srv_df.SD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.attack_bool==True].shape[0]
