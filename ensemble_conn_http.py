@@ -130,23 +130,23 @@ df_eda=pd.DataFrame()
 
 jdf_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
-services=['http','ftp','dns']#'conn','ssl',
+services=['http','ftp','dns']#,'ssl',
 pcap_dirs= ['maccdc2012_00003']#'maccdc2012_00001','maccdc2012_00002','maccdc2012_00004']
 
 
 for srv in services:
     for pp in pcap_dirs:
-        service_collection_name=pp+'_'+srv+'_pp'
-        conn_collection_name=pp+'_conn'+'_pp'
+        service_collection_name=pp+'_'+srv#+'_pp'
+        conn_collection_name=pp+'_conn'#+'_pp'
         service_collection = get_db()[service_collection_name]
         conn_collection = get_db()[conn_collection_name]
         #doc_t=service_collection.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
         # # find first timestamp
-        first_doc= service_collection.find(sort=[('ts',1)],limit=1)
+        first_doc= conn_collection.find(sort=[('ts',1)],limit=1)
         # # we received a collection of ONE,but we only care about the first timestamp
         for dd in first_doc: first_ts=dd['ts']
         # # find last timestamp
-        last_doc= service_collection.find(sort=[('ts',-1)],limit=1)
+        last_doc= conn_collection.find(sort=[('ts',-1)],limit=1)
         # # we received a collection of ONE,but we only care about the first timestamp
         for dd in last_doc: last_ts=dd['ts']
         
@@ -159,12 +159,12 @@ for srv in services:
     
             if index==intervals-1:
                 srv_doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})#,{'orig_bytes':{'$gt':0}}
-                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'orig_bytes':{'$gt':0}}]})
+                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':srv}]}]})
             else:
                 # # find from the timestamp, up to the pre-set time interval size
                 # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
                 srv_doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})#,{'orig_bytes':{'$gt':0}}
-                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
+                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':srv}]}]})
           
             srv_df =  pd.DataFrame(list(srv_doc_tt)) 
             conn_df =  pd.DataFrame(list(conn_doc_tt)) 
@@ -184,28 +184,65 @@ for srv in services:
             if srv_df.loc[srv_df.OD_anomaly=='true'].shape[0]>0:
                 srv_OD_precision=srv_df.loc[(srv_df.OD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.OD_anomaly=='true'].shape[0]
                 srv_df['OD_norm']=normalise_gaussian(srv_df.OD)
+            else:
+                srv_OD_precision=0
+  
+            if conn_df.loc[conn_df.SD_anomaly=='true'].shape[0]>0:
+                conn_SD_precision=conn_df.loc[(conn_df.SD_anomaly=='true') & (conn_df.attack_bool==True)].shape[0]/conn_df.loc[conn_df.SD_anomaly=='true'].shape[0]
+                conn_df['SD_norm']=normalise_gamma(conn_df.SD)
+            else:
+                conn_SD_precision=0
             
-            
-            sdd=pd.DataFrame()
-            sdd['attack']=srv_df.attack_bool
-            sdd['SD']=srv_df.SD
-            sdd['SD_norm']=srv_df.SD_norm
-            sdd['OD']=srv_df.OD
-            sdd['OD_norm']=srv_df.OD_norm                   
+            if conn_df.loc[conn_df.OD_anomaly=='true'].shape[0]>0:
+                conn_OD_precision=conn_df.loc[(conn_df.OD_anomaly=='true') & (conn_df.attack_bool==True)].shape[0]/conn_df.loc[conn_df.OD_anomaly=='true'].shape[0]
+                conn_df['OD_norm']=normalise_gaussian(conn_df.OD)
+            else:
+                conn_OD_precision=0
+
+
+            if conn_df.loc[conn_df.attack_bool==True].shape[0]>0:
+                conn_SD_recall=conn_df.loc[(conn_df.SD_anomaly=='true') & (conn_df.attack_bool==True)].shape[0]/conn_df.loc[conn_df.attack_bool==True].shape[0]
+                conn_attacks=conn_df.loc[(conn_df.attack_bool==True)].shape[0]
+                conn_OD_recall=conn_df.loc[(conn_df.OD_anomaly=='true') & (conn_df.attack_bool==True)].shape[0]/conn_df.loc[conn_df.attack_bool==True].shape[0]
+            else:
+                conn_SD_recall=0
+                conn_attacks=0
+                conn_OD_recall=0
                 
             if srv_df.loc[srv_df.attack_bool==True].shape[0]>0:
                 srv_SD_recall=srv_df.loc[(srv_df.SD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.attack_bool==True].shape[0]
-                srv_mcd_attacks=srv_df.loc[(srv_df.mcd=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.attack_bool==True].shape[0]
+                srv_attacks=srv_df.loc[(srv_df.attack_bool==True)].shape[0]
                 OD_recall=srv_df.loc[(srv_df.OD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.attack_bool==True].shape[0]
             else:
                 srv_SD_recall=0
-                srv_mcd_attacks=0
+                srv_attacks=0
                 srv_OD_recall=0
+                           
                 
-            if df.loc[df.OD_anomaly=='true'].shape[0]>0:
-                OD_precision=df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0]
-            else:
-                OD_precision=0
+            sdd=pd.DataFrame()
+            sdd['uid']=conn_df.uid 
+            sdd['conn_attack']=conn_df.attack_bool
+            sdd['conn_SD']=conn_df.SD
+            sdd['conn_SD_norm']=conn_df.SD_norm
+            sdd['conn_OD']=conn_df.OD
+            sdd['conn_OD_norm']=conn_df.OD_norm
+            sdd[srv+'_attacks']='false'
+            sdd['service']='false'
+            sdd[srv+'_SD']='false'
+            sdd[srv+'_OD']='false'
+            sdd[srv+'_SD_norm']='false'
+            sdd[srv+'_OD_norm']='false'
+            ll=[x if x in set(conn_df.uid) else 0 for x in srv_df.uid]
+            ll=[l for l in ll if l!=0]
+            for uu in ll:
+                sdd.loc[sdd.uid==uu,srv+'_attacks']=json_bool(srv_df.loc[srv_df.uid==uu,'attack_bool'].values[0])
+                sdd.loc[sdd.uid==uu,srv+'_SD']=srv_df.loc[srv_df.uid==uu,'SD'].values[0]
+                sdd.loc[sdd.uid==uu,srv+'_SD_norm']=srv_df.loc[srv_df.uid==uu,'SD_norm'].values[0]
+                sdd.loc[sdd.uid==uu,srv+'_OD']=srv_df.loc[srv_df.uid==uu,'OD'].values[0]
+                sdd.loc[sdd.uid==uu,srv+'_OD_norm']=srv_df.loc[srv_df.uid==uu,'OD_norm'].values[0]
+                sdd.loc[sdd.uid==uu,'service']=srv
+                
+            
             
             df_s1=pd.Series([service_collection_name,
                                 index,
