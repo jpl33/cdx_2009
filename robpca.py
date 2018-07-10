@@ -70,7 +70,7 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00003'
+pcap_dir= 'maccdc2012_00001'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -155,7 +155,7 @@ df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','
 
 
 
-category_features=['service','history','conn_state','orig_to_resp','resp_to_orig']
+category_features=['service','history','conn_state','resp_to_orig','orig_to_resp']
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
@@ -171,11 +171,11 @@ intervals=math.floor((last_ts-first_ts)/time_interval)
 for index in range(intervals):
     
     if index==intervals-1:
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'orig_bytes':{'$gt':0}}]})
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
     else:
         # # find from the timestamp, up to the pre-set time interval size
         # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
+        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
 
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
@@ -323,6 +323,7 @@ for index in range(intervals):
         df_clean=df_clean.fillna(0)
     
     df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
+    df_c_n=df_c_n.fillna(0)
     df3=df[df_feature_cols1]
     df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
     #df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
@@ -405,12 +406,12 @@ for index in range(intervals):
     df.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
     
     # # find df_clean index that was used for mcd
-    mcd_index=df3_norm.iloc[H1==1].index.values
-    #mcd_index=df_c_n.iloc[H1==1].index.values
+    #mcd_index=df3_norm.iloc[H1==1].index.values
+    mcd_index=df_c_n.iloc[H1==1].index.values
     
     df["mcd"]=False
-    df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
-    #df.loc[df_c_n.iloc[H1==1].index.values,'mcd']=True
+    #df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
+    df.loc[df_c_n.iloc[H1==1].index.values,'mcd']=True
      
     msg='start single line write to mongo . Line470: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)

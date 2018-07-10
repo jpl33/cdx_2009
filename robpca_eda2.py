@@ -67,7 +67,7 @@ def json_bool(obj):
 
 
 
-pcap_dirs= ['maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']#s,'maccdc2012_00004']
+pcap_dirs= ['maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']#,'maccdc2012_00004']
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -78,7 +78,11 @@ time_interval=180
 
 
 def unset_vars():
-    service_collection.update_many({'bin':{'$exists':True}},{'$unset':{'orig_pkts_intr':'','mcd':'','bin':''}},upsert=False)
+    srv='conn'
+    for dd in pcap_dirs:
+        service_collection_name=dd+'_'+srv+'_pp'
+        service_collection = get_db()[service_collection_name]
+        service_collection.update_many({'bin':{'$exists':True}},{'$set':{'SD':0,'OD':0,'SD_anomaly':'false','SD_feature':'false','OD_anomaly':'false','OD_feature':'false'}},upsert=False)
 
 
 
@@ -115,12 +119,13 @@ df_eda=pd.DataFrame()
 
 jdf_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
-services=['http','ftp','dns']#'conn','ssl',
+services=['conn','http','ftp','dns']#,'ssl',
 
+#unset_vars()
 
 for srv in services:
     for pp in pcap_dirs:
-        service_collection_name=pp+'_'+srv
+        service_collection_name=pp+'_'+srv#+'_pp'
         
         service_collection = get_db()[service_collection_name]
         #doc_t=service_collection.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
@@ -141,16 +146,22 @@ for srv in services:
         for index in range(intervals):
     
             if index==intervals-1:
-                doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})#,{'orig_bytes':{'$gt':0}}
+                if srv=='conn':
+                    doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'orig_bytes':{'$gt':0}}]})
+                else:
+                    doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})
             else:
                 # # find from the timestamp, up to the pre-set time interval size
                 # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
-                doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})#,{'orig_bytes':{'$gt':0}}
+                if srv=='conn':
+                    doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'orig_bytes':{'$gt':0}}]})
+                else:
+                    doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})
           
             df =  pd.DataFrame(list(doc_tt)) 
             # # number of flows in bin
             df_cnt=df.shape[0]
-            if df_cnt<100:
+            if df_cnt<20:
                 first_ts+=time_interval
                 continue
             
@@ -167,6 +178,10 @@ for srv in services:
                 SD_recall=0
                 mcd_attacks=0
                 OD_recall=0
+            if df.loc[df.OD_anomaly=='true'].shape[0]>0:
+                OD_precision=df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0]
+            else:
+                OD_precision=0
             
             df_s1=pd.Series([service_collection_name,
                                 index,
@@ -179,7 +194,7 @@ for srv in services:
                                 SD_precision,
                                 df.loc[df.OD_anomaly=='true'].shape[0],
                                 OD_recall,
-                                df.loc[(df.OD_anomaly=='true') & (df.attack_bool==True)].shape[0]/df.loc[df.OD_anomaly=='true'].shape[0],
+                                OD_precision,
                                 0,
                                 0
                                ])
@@ -190,9 +205,13 @@ for srv in services:
             else:
                 SD_F1=0
             if OD_recall>0:
-                OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+                if OD_precision>0:
+                    OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+                else:
+                    OD_F1=0
             else:
                 OD_F1=0
+            
             df_r1['SD_F1']=SD_F1
             df_r1['OD_F1']=OD_F1
             df_eda=df_eda.append(df_r1)
@@ -213,14 +232,20 @@ for srv in services:
             recall_OD=anomal_attacks_OD/attacks
         if anomalies_SD>0:
             precision_SD=anomal_attacks_SD/anomalies_SD
-            F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
+            if ((precision_SD>0) and (recall_SD>0)): 
+                F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
+            else:
+                F1_SD=0
         else:
             precision_SD=0
             F1_SD=0
         
         if anomalies_OD>0:
             precision_OD=anomal_attacks_OD/anomalies_OD
-            F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+            if ((precision_OD>0) and (recall_OD>0)): 
+                F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+            else:
+                F1_OD=0
         else:
             precision_OD=0
             F1_OD=0

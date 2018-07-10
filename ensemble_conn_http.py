@@ -159,12 +159,12 @@ for srv in services:
     
             if index==intervals-1:
                 srv_doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}}]})#,{'orig_bytes':{'$gt':0}}
-                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':srv}]}]})
+                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
             else:
                 # # find from the timestamp, up to the pre-set time interval size
                 # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
                 srv_doc_tt=service_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}}]})#,{'orig_bytes':{'$gt':0}}
-                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':srv}]}]})
+                conn_doc_tt=conn_collection.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'service':'true'}}]}]})
           
             srv_df =  pd.DataFrame(list(srv_doc_tt)) 
             conn_df =  pd.DataFrame(list(conn_doc_tt)) 
@@ -221,29 +221,91 @@ for srv in services:
                 
             sdd=pd.DataFrame()
             sdd['uid']=conn_df.uid 
-            sdd['conn_attack']=conn_df.attack_bool
+            sdd['conn_attacks']=conn_df.attack_bool
             sdd['conn_SD']=conn_df.SD
             sdd['conn_SD_norm']=conn_df.SD_norm
             sdd['conn_OD']=conn_df.OD
             sdd['conn_OD_norm']=conn_df.OD_norm
-            sdd[srv+'_attacks']='false'
+            sdd['srv_attacks']='false'
             sdd['service']='false'
-            sdd[srv+'_SD']='false'
-            sdd[srv+'_OD']='false'
-            sdd[srv+'_SD_norm']='false'
-            sdd[srv+'_OD_norm']='false'
+            sdd['srv_SD']=float(0)
+            sdd['srv_OD']=float(0)
+            sdd['srv_SD_norm']=float(0)
+            sdd['srv_OD_norm']=float(0)
+            sdd['total_outlier_score']=float(0)
+            # # select all uid in srv_df AND conn_df from the srv_df uid
             ll=[x if x in set(conn_df.uid) else 0 for x in srv_df.uid]
             ll=[l for l in ll if l!=0]
+            # # for all the uid in both DataFrames set the service SD,OD,norm_SD,norm_OD, service attacks
             for uu in ll:
-                sdd.loc[sdd.uid==uu,srv+'_attacks']=json_bool(srv_df.loc[srv_df.uid==uu,'attack_bool'].values[0])
-                sdd.loc[sdd.uid==uu,srv+'_SD']=srv_df.loc[srv_df.uid==uu,'SD'].values[0]
-                sdd.loc[sdd.uid==uu,srv+'_SD_norm']=srv_df.loc[srv_df.uid==uu,'SD_norm'].values[0]
-                sdd.loc[sdd.uid==uu,srv+'_OD']=srv_df.loc[srv_df.uid==uu,'OD'].values[0]
-                sdd.loc[sdd.uid==uu,srv+'_OD_norm']=srv_df.loc[srv_df.uid==uu,'OD_norm'].values[0]
+                sdd.loc[sdd.uid==uu,'srv_attacks']=json_bool(srv_df.loc[srv_df.uid==uu,'attack_bool'].values[0])
+                sdd.loc[sdd.uid==uu,'srv_SD']=srv_df.loc[srv_df.uid==uu,'SD'].values[0]
+                conn_sd=sdd.loc[sdd.uid==uu,'conn_SD'].values[0]
+                srv_sd=sdd.loc[sdd.uid==uu,'srv_SD'].values[0]
+                sdd.loc[sdd.uid==uu,'srv_SD_norm']=srv_df.loc[srv_df.uid==uu,'SD_norm'].values[0]
+                conn_sd_norm=sdd.loc[sdd.uid==uu,'conn_SD_norm'].values[0]
+                srv_sd_norm=sdd.loc[sdd.uid==uu,'srv_SD_norm'].values[0]
+                sdd.loc[sdd.uid==uu,'srv_OD']=srv_df.loc[srv_df.uid==uu,'OD'].values[0]
+                conn_od=sdd.loc[sdd.uid==uu,'conn_OD'].values[0]
+                srv_od=sdd.loc[sdd.uid==uu,'srv_OD'].values[0]
+                sdd.loc[sdd.uid==uu,'srv_OD_norm']=srv_df.loc[srv_df.uid==uu,'OD_norm'].values[0]
+                conn_od_norm=sdd.loc[sdd.uid==uu,'conn_OD_norm'].values[0]
+                srv_od_norm=sdd.loc[sdd.uid==uu,'srv_OD_norm'].values[0]
                 sdd.loc[sdd.uid==uu,'service']=srv
-                
+                sdd.loc[sdd.uid==uu,'total_outlier_score']=( (srv_sd*srv_sd_norm)+(srv_od*srv_od_norm)+(conn_sd*conn_sd_norm)+(conn_od*conn_od_norm))/4
             
+            df_conn=sdd.loc[sdd.service==srv,:'conn_OD_norm']
+            df_conn['total_outlier_score']=sdd.loc[sdd.service==srv,'total_outlier_score']
+            df_srv=sdd.loc[sdd.service==srv,'srv_attacks':]
             
+            fig, ((ax11,ax12),(ax21,ax22)) = plt.subplots(2, 2, figsize=(14,10))#sharex=True, sharey=True,
+            
+            conn_groups = df_conn.groupby('conn_attacks')
+            srv_groups = df_srv.groupby('srv_attacks')
+            
+            for name, group in conn_groups:
+                if name==False:
+                    ax11.scatter(x=group["conn_SD"],y=group['conn_OD'],label='no attack')
+                else:
+                    ax11.scatter(x=group["conn_SD"],y=group['conn_OD'],label='attack')
+                    plt.axhline(y=conn_df.loc[conn_df.OD_anomaly==True,'OD'].min() )
+                    plt.axvline(x=conn_df.loc[conn_df.SD_anomaly==True,'SD'].min() )                       
+                    plt.xlabel("Mahalanobis DIstance (SD)")
+                    plt.ylabel("PCA residuals (OD)")
+                    plt.legend(loc=2)
+                    
+            for name, group in srv_groups:
+                if name==False:
+                    ax12.scatter(x=group["srv_SD"],y=group['srv_OD'],label='no attack')
+                else:
+                    ax12.scatter(x=group["srv_SD"],y=group['srv_OD'],label='attack')
+                    plt.axhline(y=srv_df.loc[srv_df.OD_anomaly==True,'OD'].min() )
+                    plt.axvline(x=srv_df.loc[srv_df.SD_anomaly==True,'SD'].min() )                       
+                    plt.xlabel("Mahalanobis DIstance (SD)")
+                    plt.ylabel("PCA residuals (OD)")
+                    plt.legend(loc=2)
+                    
+                    
+            conn_groups2 = df_conn.groupby('conn_attacks')
+            srv_groups2 = df_srv.groupby('srv_attacks')
+            colors=['red','green','blue','yellow']
+            
+            for name, cgroup in conn_groups2:
+                if name==False:
+                    ax21.hist(cgroup['total_outlier_score'],label='conn_attack_false',fill=False,color=colors)
+                else:
+                    ax21.hist(cgroup['total_outlier_score'],label='conn_attack_true',fill=False,color=colors)
+                    ax21.legend(loc=2)
+                    plt.show()
+            for name, sgroup in srv_groups2:
+                if name==False:
+                    ax21.hist(sgroup['total_outlier_score'],label='srv_attack_false',fill=False,color=colors)
+                else:
+                    ax21.hist(sgroup['total_outlier_score'],label='srv_attack_true',fill=False,color=colors)
+                    ax21.legend(loc=2)
+            plt.show()
+                    
+                    
             df_s1=pd.Series([service_collection_name,
                                 index,
                                 df_cnt,
