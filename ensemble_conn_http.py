@@ -131,11 +131,11 @@ df_eda=pd.DataFrame()
 jdf_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
 services=['http','ftp','dns']#,'ssl',
-pcap_dirs= ['maccdc2012_00003']#'maccdc2012_00001','maccdc2012_00002','maccdc2012_00004']
+pcap_dirs= ['maccdc2012_00002']#'maccdc2012_00001','maccdc2012_00002','maccdc2012_00004']
 
-
-for srv in services:
-    for pp in pcap_dirs:
+for pp in pcap_dirs:
+    for srv in services:
+    
         service_collection_name=pp+'_'+srv#+'_pp'
         conn_collection_name=pp+'_conn'#+'_pp'
         service_collection = get_db()[service_collection_name]
@@ -171,9 +171,9 @@ for srv in services:
             # # number of flows in bin
             srv_df_cnt=srv_df.shape[0]
             conn_df_cnt=conn_df.shape[0]
-#            if df_cnt<100:
-#                first_ts+=time_interval
-#                continue
+            if (conn_df_cnt<20)| (srv_df_cnt<20):
+                first_ts+=time_interval
+                continue
             #srv_SD_th=collection_bins.aggregate({'$merge':{'pcap_dir':pp,'bin':index}},{'$project':'http_SD_th'})
             if srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]>0:
                 srv_SD_precision=srv_df.loc[(srv_df.SD_anomaly=='true') & (srv_df.attack_bool==True)].shape[0]/srv_df.loc[srv_df.SD_anomaly=='true'].shape[0]
@@ -221,53 +221,68 @@ for srv in services:
                 
             sdd=pd.DataFrame()
             sdd['uid']=conn_df.uid 
-            sdd['conn_attacks']=conn_df.attack_bool
+            sdd['conn_attack']=conn_df.attack_bool
             sdd['conn_SD']=conn_df.SD
             sdd['conn_SD_norm']=conn_df.SD_norm
             sdd['conn_OD']=conn_df.OD
             sdd['conn_OD_norm']=conn_df.OD_norm
-            sdd['srv_attacks']='false'
-            sdd['service']='false'
-            sdd['srv_SD']=float(0)
-            sdd['srv_OD']=float(0)
-            sdd['srv_SD_norm']=float(0)
-            sdd['srv_OD_norm']=float(0)
-            sdd['total_outlier_score']=float(0)
+#            sdd['srv_attacks']='false'
+#            sdd['service']='false'
+#            sdd['srv_SD']=float(0)
+#            sdd['srv_OD']=float(0)
+#            sdd['srv_SD_norm']=float(0)
+#            sdd['srv_OD_norm']=float(0)
+#            sdd['total_outlier_score']=float(0)
             # # select all uid in srv_df AND conn_df from the srv_df uid
-            ll=[x if x in set(conn_df.uid) else 0 for x in srv_df.uid]
-            ll=[l for l in ll if l!=0]
+            lsr=[x if x in set(conn_df.uid) else 0 for x in srv_df.uid]
+            lsr=[l for l in lsr if l!=0]
+            sdf=pd.DataFrame()
+            sdf_columns=['uid','conn_attack','conn_SD','conn_SD_norm','conn_OD','conn_OD_norm','service','srv_attack','srv_ts','srv_SD','srv_SD_norm','srv_OD','srv_OD_norm','total_outlier_score']
             # # for all the uid in both DataFrames set the service SD,OD,norm_SD,norm_OD, service attacks
-            for uu in ll:
-                sdd.loc[sdd.uid==uu,'srv_attacks']=json_bool(srv_df.loc[srv_df.uid==uu,'attack_bool'].values[0])
-                sdd.loc[sdd.uid==uu,'srv_SD']=srv_df.loc[srv_df.uid==uu,'SD'].values[0]
-                conn_sd=sdd.loc[sdd.uid==uu,'conn_SD'].values[0]
-                srv_sd=sdd.loc[sdd.uid==uu,'srv_SD'].values[0]
-                sdd.loc[sdd.uid==uu,'srv_SD_norm']=srv_df.loc[srv_df.uid==uu,'SD_norm'].values[0]
-                conn_sd_norm=sdd.loc[sdd.uid==uu,'conn_SD_norm'].values[0]
-                srv_sd_norm=sdd.loc[sdd.uid==uu,'srv_SD_norm'].values[0]
-                sdd.loc[sdd.uid==uu,'srv_OD']=srv_df.loc[srv_df.uid==uu,'OD'].values[0]
-                conn_od=sdd.loc[sdd.uid==uu,'conn_OD'].values[0]
-                srv_od=sdd.loc[sdd.uid==uu,'srv_OD'].values[0]
-                sdd.loc[sdd.uid==uu,'srv_OD_norm']=srv_df.loc[srv_df.uid==uu,'OD_norm'].values[0]
-                conn_od_norm=sdd.loc[sdd.uid==uu,'conn_OD_norm'].values[0]
-                srv_od_norm=sdd.loc[sdd.uid==uu,'srv_OD_norm'].values[0]
-                sdd.loc[sdd.uid==uu,'service']=srv
-                sdd.loc[sdd.uid==uu,'total_outlier_score']=( (srv_sd*srv_sd_norm)+(srv_od*srv_od_norm)+(conn_sd*conn_sd_norm)+(conn_od*conn_od_norm))/4
+            for uu in lsr:
+                rr=srv_df.loc[srv_df.uid==uu]
+                for i in rr.index.values:
+                    srf=pd.Series([uu,
+                                   sdd.loc[sdd.uid==uu,'conn_attack'].values[0],
+                                   sdd.loc[sdd.uid==uu,'conn_SD'].values[0],
+                                   sdd.loc[sdd.uid==uu,'conn_SD_norm'].values[0],
+                                   sdd.loc[sdd.uid==uu,'conn_OD'].values[0],
+                                   sdd.loc[sdd.uid==uu,'conn_OD_norm'].values[0],
+                                   srv,
+                                   json_bool(rr.loc[i,'attack_bool']),
+                                   rr.loc[i,'ts'],
+                                   rr.loc[i,'SD'],
+                                   rr.loc[i,'SD_norm'],
+                                   rr.loc[i,'OD'],
+                                   rr.loc[i,'OD_norm'],
+                                   0 ])
+                    df_r1=pd.DataFrame(srf).T
+                    df_r1.columns=sdf_columns
+                    
+                    conn_sd=df_r1.conn_SD
+                    conn_sd_norm=df_r1.conn_SD_norm
+                    conn_od=df_r1.conn_OD
+                    conn_od_norm=df_r1.conn_OD_norm
+                    srv_sd=df_r1.srv_SD
+                    srv_sd_norm=df_r1.srv_SD_norm
+                    srv_od=df_r1.srv_OD
+                    srv_od_norm=df_r1.srv_OD_norm
+                    df_r1['total_outlier_score']=( (srv_sd_norm)+(srv_od_norm)+(conn_sd_norm)+(conn_od_norm))/4
+                    sdf=sdf.append(df_r1)
+                
+                
+            fig, ((ax11,ax12,ax13)) = plt.subplots(1, 3, figsize=(14,10))#sharex=True, sharey=True,
             
-            df_conn=sdd.loc[sdd.service==srv,:'conn_OD_norm']
-            df_conn['total_outlier_score']=sdd.loc[sdd.service==srv,'total_outlier_score']
-            df_srv=sdd.loc[sdd.service==srv,'srv_attacks':]
-            
-            fig, ((ax11,ax12),(ax21,ax22)) = plt.subplots(2, 2, figsize=(14,10))#sharex=True, sharey=True,
-            
-            conn_groups = df_conn.groupby('conn_attacks')
-            srv_groups = df_srv.groupby('srv_attacks')
-            
+            conn_groups = sdf.groupby('conn_attack')
+            srv_groups = sdf.groupby('srv_attack')
+            ttl=list()
             for name, group in conn_groups:
                 if name==False:
                     ax11.scatter(x=group["conn_SD"],y=group['conn_OD'],label='no attack')
+                    ttl.append(group['total_outlier_score'])
                 else:
                     ax11.scatter(x=group["conn_SD"],y=group['conn_OD'],label='attack')
+                    ttl.append(group['total_outlier_score'])
                     plt.axhline(y=conn_df.loc[conn_df.OD_anomaly==True,'OD'].min() )
                     plt.axvline(x=conn_df.loc[conn_df.SD_anomaly==True,'SD'].min() )                       
                     plt.xlabel("Mahalanobis DIstance (SD)")
@@ -277,106 +292,95 @@ for srv in services:
             for name, group in srv_groups:
                 if name==False:
                     ax12.scatter(x=group["srv_SD"],y=group['srv_OD'],label='no attack')
+                    ttl.append(group['total_outlier_score'])
                 else:
                     ax12.scatter(x=group["srv_SD"],y=group['srv_OD'],label='attack')
+                    ttl.append(group['total_outlier_score'])
                     plt.axhline(y=srv_df.loc[srv_df.OD_anomaly==True,'OD'].min() )
                     plt.axvline(x=srv_df.loc[srv_df.SD_anomaly==True,'SD'].min() )                       
                     plt.xlabel("Mahalanobis DIstance (SD)")
                     plt.ylabel("PCA residuals (OD)")
                     plt.legend(loc=2)
-                    
-                    
-            conn_groups2 = df_conn.groupby('conn_attacks')
-            srv_groups2 = df_srv.groupby('srv_attacks')
+
             colors=['red','green','blue','yellow']
-            
-            for name, cgroup in conn_groups2:
-                if name==False:
-                    ax21.hist(cgroup['total_outlier_score'],label='conn_attack_false',fill=False,color=colors)
-                else:
-                    ax21.hist(cgroup['total_outlier_score'],label='conn_attack_true',fill=False,color=colors)
-                    ax21.legend(loc=2)
-                    plt.show()
-            for name, sgroup in srv_groups2:
-                if name==False:
-                    ax21.hist(sgroup['total_outlier_score'],label='srv_attack_false',fill=False,color=colors)
-                else:
-                    ax21.hist(sgroup['total_outlier_score'],label='srv_attack_true',fill=False,color=colors)
-                    ax21.legend(loc=2)
+            #fig, ax13 = plt.subplots(1, 1, figsize=(14,10))#sharex=True, sharey=True,
+            ax13.hist(ttl,label=['conn_attack_false','conn_attack_true','srv_attack_false','srv_attack_true'])
+            ax13.legend(loc=2)
             plt.show()
-                    
-                    
-            df_s1=pd.Series([service_collection_name,
-                                index,
-                                df_cnt,
-                                df.loc[df.attack_bool==True].shape[0],
-                                df.loc[df.mcd=='true'].shape[0],
-                                mcd_attacks,
-                                df.loc[df.SD_anomaly=='true'].shape[0],
-                                SD_recall,
-                                SD_precision,
-                                df.loc[df.OD_anomaly=='true'].shape[0],
-                                OD_recall,
-                                OD_precision,
-                                0,
-                                0
-                               ])
-            df_r1=pd.DataFrame(df_s1).T
-            df_r1.columns=df_eda_cols
-            if SD_precision>0:
-                SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
-            else:
-                SD_F1=0
-            if OD_recall>0:
-                if OD_precision>0:
-                    OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
-                else:
-                    OD_F1=0
-            else:
-                OD_F1=0
-            
-            df_r1['SD_F1']=SD_F1
-            df_r1['OD_F1']=OD_F1
-            df_eda=df_eda.append(df_r1)
-            first_ts+=time_interval
-        df_eda_pp=df_eda.loc[df_eda.collection==pp]
-        srv_lst=[x if x==service_collection_name else 0 for x in df_eda.collection ]
-        df_eda_pp=df_eda.loc[df_eda.collection.isin(srv_lst)]
-        anomal_attacks_SD=(df_eda_pp.SD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
-        attacks=df_eda_pp.attack_bool_count.sum()
-        anomalies_SD=df_eda_pp.SD_anomaly.sum()
-        anomal_attacks_OD=(df_eda_pp.OD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
-        anomalies_OD=df_eda_pp.OD_anomaly.sum()
-        if attacks==0:
-            recall_SD=0
-            recall_OD=0
-        else:
-            recall_SD=anomal_attacks_SD/attacks
-            recall_OD=anomal_attacks_OD/attacks
-        if anomalies_SD>0:
-            precision_SD=anomal_attacks_SD/anomalies_SD
-            if ((precision_SD>0) and (recall_SD>0)): 
-                F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
-            else:
-                F1_SD=0
-        else:
-            precision_SD=0
-            F1_SD=0
+            fig.savefig(str('conn_'+srv+'_'+pp+'_bin'+str(index)+'.png'),bbox_inches='tight')  
         
-        if anomalies_OD>0:
-            precision_OD=anomal_attacks_OD/anomalies_OD
-            if ((precision_OD>0) and (recall_OD>0)): 
-                F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
-            else:
-                F1_OD=0
-        else:
-            precision_OD=0
-            F1_OD=0
-        
-        df1=pd.Series(['null',0,0,0,0,0,0,0,0,0,0,0,F1_SD,F1_OD])
-        df11=pd.DataFrame(df1).T
-        df11.columns=df_eda_cols
-        df_eda=df_eda.append(df11)
+#                    
+#            df_s1=pd.Series([service_collection_name,
+#                                index,
+#                                df_cnt,
+#                                df.loc[df.attack_bool==True].shape[0],
+#                                df.loc[df.mcd=='true'].shape[0],
+#                                mcd_attacks,
+#                                df.loc[df.SD_anomaly=='true'].shape[0],
+#                                SD_recall,
+#                                SD_precision,
+#                                df.loc[df.OD_anomaly=='true'].shape[0],
+#                                OD_recall,
+#                                OD_precision,
+#                                0,
+#                                0
+#                               ])
+#            df_r1=pd.DataFrame(df_s1).T
+#            df_r1.columns=df_eda_cols
+#            if SD_precision>0:
+#                SD_F1=2*df_r1.SD_anomaly_percision*df_r1.SD_anomaly_recall/(df_r1.SD_anomaly_percision+df_r1.SD_anomaly_recall)
+#            else:
+#                SD_F1=0
+#            if OD_recall>0:
+#                if OD_precision>0:
+#                    OD_F1=2*df_r1.OD_anomaly_percision*df_r1.OD_anomaly_recall/(df_r1.OD_anomaly_percision+df_r1.OD_anomaly_recall)
+#                else:
+#                    OD_F1=0
+#            else:
+#                OD_F1=0
+#            
+#            df_r1['SD_F1']=SD_F1
+#            df_r1['OD_F1']=OD_F1
+#            df_eda=df_eda.append(df_r1)
+#            first_ts+=time_interval
+#        df_eda_pp=df_eda.loc[df_eda.collection==pp]
+#        srv_lst=[x if x==service_collection_name else 0 for x in df_eda.collection ]
+#        df_eda_pp=df_eda.loc[df_eda.collection.isin(srv_lst)]
+#        anomal_attacks_SD=(df_eda_pp.SD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
+#        attacks=df_eda_pp.attack_bool_count.sum()
+#        anomalies_SD=df_eda_pp.SD_anomaly.sum()
+#        anomal_attacks_OD=(df_eda_pp.OD_anomaly_recall*df_eda_pp.attack_bool_count).sum()
+#        anomalies_OD=df_eda_pp.OD_anomaly.sum()
+#        if attacks==0:
+#            recall_SD=0
+#            recall_OD=0
+#        else:
+#            recall_SD=anomal_attacks_SD/attacks
+#            recall_OD=anomal_attacks_OD/attacks
+#        if anomalies_SD>0:
+#            precision_SD=anomal_attacks_SD/anomalies_SD
+#            if ((precision_SD>0) and (recall_SD>0)): 
+#                F1_SD=2*precision_SD*recall_SD/(precision_SD+recall_SD)
+#            else:
+#                F1_SD=0
+#        else:
+#            precision_SD=0
+#            F1_SD=0
+#        
+#        if anomalies_OD>0:
+#            precision_OD=anomal_attacks_OD/anomalies_OD
+#            if ((precision_OD>0) and (recall_OD>0)): 
+#                F1_OD=2*precision_OD*recall_OD/(precision_OD+recall_OD)
+#            else:
+#                F1_OD=0
+#        else:
+#            precision_OD=0
+#            F1_OD=0
+#        
+#        df1=pd.Series(['null',0,0,0,0,0,0,0,0,0,0,0,F1_SD,F1_OD])
+#        df11=pd.DataFrame(df1).T
+#        df11.columns=df_eda_cols
+#        df_eda=df_eda.append(df11)
         
     
 df_eda.to_csv("df_eda.csv")
