@@ -110,6 +110,7 @@ def normalise_gaussian(sdx):
         raw_norm_gauss=sci.special.erf(z)
         norm_gauss=pd.Series(raw_norm_gauss)
         norm_gauss.loc[norm_gauss<0]=0
+        norm_gauss=norm_gauss.abs()
         return norm_gauss
 
 def normalise_gamma(sdx):                
@@ -130,8 +131,10 @@ df_eda=pd.DataFrame()
 
 jdf_feature_cols2=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','cumultv_pkt_count','orig_pkts_size','serv_freq','history_freq','conn_state_freq']
 
-services=['http','ftp','dns']#,'ssl',
-pcap_dirs= ['maccdc2012_00002']#'maccdc2012_00001','maccdc2012_00002','maccdc2012_00004']
+services=['http']#,'ftp','dns']#,'ssl',
+pcap_dirs= ['maccdc2012_00004']#,'maccdc2012_00005','maccdc2012_00006']#'maccdc2012_00001','maccdc2012_00002','maccdc2012_00003']
+
+ensemble_df=pd.DataFrame()
 
 for pp in pcap_dirs:
     for srv in services:
@@ -226,23 +229,21 @@ for pp in pcap_dirs:
             sdd['conn_SD_norm']=conn_df.SD_norm
             sdd['conn_OD']=conn_df.OD
             sdd['conn_OD_norm']=conn_df.OD_norm
-#            sdd['srv_attacks']='false'
-#            sdd['service']='false'
-#            sdd['srv_SD']=float(0)
-#            sdd['srv_OD']=float(0)
-#            sdd['srv_SD_norm']=float(0)
-#            sdd['srv_OD_norm']=float(0)
-#            sdd['total_outlier_score']=float(0)
             # # select all uid in srv_df AND conn_df from the srv_df uid
             lsr=[x if x in set(conn_df.uid) else 0 for x in srv_df.uid]
             lsr=[l for l in lsr if l!=0]
+            lsr=list(set(lsr))
             sdf=pd.DataFrame()
-            sdf_columns=['uid','conn_attack','conn_SD','conn_SD_norm','conn_OD','conn_OD_norm','service','srv_attack','srv_ts','srv_SD','srv_SD_norm','srv_OD','srv_OD_norm','total_outlier_score']
+            sdf_columns=['pcap_dir','index','uid','conn_attack','conn_SD','conn_SD_norm','conn_OD','conn_OD_norm','service','srv_attack','srv_ts','srv_SD','srv_SD_norm','srv_OD','srv_OD_norm','total_outlier_score']
             # # for all the uid in both DataFrames set the service SD,OD,norm_SD,norm_OD, service attacks
             for uu in lsr:
                 rr=srv_df.loc[srv_df.uid==uu]
+                msg=str( 'pcap_dir:'+pp+':service:'+srv+': index:'+str(index)+': processing '+str(rr.shape[0])+' application requests, out of '+str(srv_df.shape[0])+'. '+str(lsr.index(uu))+' out of '+str(len(lsr))+' uids' )
+                myLogger.error(msg)
                 for i in rr.index.values:
-                    srf=pd.Series([uu,
+                    srf=pd.Series([pp,
+                                   index,
+                                   uu,
                                    sdd.loc[sdd.uid==uu,'conn_attack'].values[0],
                                    sdd.loc[sdd.uid==uu,'conn_SD'].values[0],
                                    sdd.loc[sdd.uid==uu,'conn_SD_norm'].values[0],
@@ -270,8 +271,10 @@ for pp in pcap_dirs:
                     df_r1['total_outlier_score']=( (srv_sd_norm)+(srv_od_norm)+(conn_sd_norm)+(conn_od_norm))/4
                     sdf=sdf.append(df_r1)
                 
-                
-            fig, ((ax11,ax12,ax13)) = plt.subplots(1, 3, figsize=(14,10))#sharex=True, sharey=True,
+            ensemble_df=ensemble_df.append(sdf)
+           
+            plt.ion()  
+            fig, ((ax11,ax12,ax13,ax14)) = plt.subplots(1,4, figsize=(22,10))#sharex=True, sharey=True,
             
             conn_groups = sdf.groupby('conn_attack')
             srv_groups = sdf.groupby('srv_attack')
@@ -283,11 +286,12 @@ for pp in pcap_dirs:
                 else:
                     ax11.scatter(x=group["conn_SD"],y=group['conn_OD'],label='attack')
                     ttl.append(group['total_outlier_score'])
-                    plt.axhline(y=conn_df.loc[conn_df.OD_anomaly==True,'OD'].min() )
-                    plt.axvline(x=conn_df.loc[conn_df.SD_anomaly==True,'SD'].min() )                       
-                    plt.xlabel("Mahalanobis DIstance (SD)")
-                    plt.ylabel("PCA residuals (OD)")
-                    plt.legend(loc=2)
+                    ax11.axhline(y=conn_df.loc[conn_df.OD_anomaly==True,'OD'].min() )
+                    ax11.axvline(x=conn_df.loc[conn_df.SD_anomaly==True,'SD'].min() )                       
+                    ax11.set_xlabel("Mahalanobis DIstance (SD)")
+                    ax11.set_ylabel("PCA residuals (OD)")
+                    ax11.set_title('TCP Connection Analysis')
+                    ax11.legend(loc=2)
                     
             for name, group in srv_groups:
                 if name==False:
@@ -296,19 +300,37 @@ for pp in pcap_dirs:
                 else:
                     ax12.scatter(x=group["srv_SD"],y=group['srv_OD'],label='attack')
                     ttl.append(group['total_outlier_score'])
-                    plt.axhline(y=srv_df.loc[srv_df.OD_anomaly==True,'OD'].min() )
-                    plt.axvline(x=srv_df.loc[srv_df.SD_anomaly==True,'SD'].min() )                       
-                    plt.xlabel("Mahalanobis DIstance (SD)")
-                    plt.ylabel("PCA residuals (OD)")
-                    plt.legend(loc=2)
+                    ax12.axhline(y=srv_df.loc[srv_df.OD_anomaly==True,'OD'].min() )
+                    ax12.axvline(x=srv_df.loc[srv_df.SD_anomaly==True,'SD'].min() )                       
+                    ax12.set_xlabel("Mahalanobis DIstance (SD)")
+                    ax12.set_ylabel("PCA residuals (OD)")
+                    ax12.set_title('HTTP application analysis')
+                    ax12.legend(loc=2)
 
-            colors=['red','green','blue','yellow']
+            #colors=['red','green','blue','yellow']
             #fig, ax13 = plt.subplots(1, 1, figsize=(14,10))#sharex=True, sharey=True,
+            
             ax13.hist(ttl,label=['conn_attack_false','conn_attack_true','srv_attack_false','srv_attack_true'])
+            ax13.set_xlabel('total_outlier_score')
+            ax13.set_ylabel('count')
+            ax13.set_title('attack/non-attack histograms')
             ax13.legend(loc=2)
+            gg=sdf.total_outlier_score.value_counts()
+            ggl1=gg.index.values
+            ggl2=gg.values
+            poly1=np.polyfit(ggl1,ggl2,10)
+            poly2=np.poly1d(poly1)
+            ax14.plot(sdf.total_outlier_score,poly2(sdf.total_outlier_score),'g^')
+            #ax14.hist(sdf.total_outlier_score,histtype='step')
+            ax14.set_xlabel('total_outlier_score')
+            ax14.set_ylabel('count')
+            ax14.set_title('fitted curve')
+            ax14.legend(loc=2)
             plt.show()
+            
             fig.savefig(str('conn_'+srv+'_'+pp+'_bin'+str(index)+'.png'),bbox_inches='tight')  
-        
+            first_ts+=time_interval
+
 #                    
 #            df_s1=pd.Series([service_collection_name,
 #                                index,
@@ -383,4 +405,4 @@ for pp in pcap_dirs:
 #        df_eda=df_eda.append(df11)
         
     
-df_eda.to_csv("df_eda.csv")
+ensemble_df.to_csv("ensemble_df.csv")
