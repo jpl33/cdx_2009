@@ -178,11 +178,17 @@ def ltr_entropy(string_mine):
 
 def subset_tupl(tup1,tup2):
     j=0
-    for tt in tup1:
-        if tup2[tup1.index(tt)]!=tt:
+    if isinstance(tup1,tuple):
+        for tt in tup1:
+            if tup2[tup1.index(tt)]!=tt:
+                j+=1
+        return j
+    else:
+        if tup1==tup2[0]:
+            return j
+        else:
             j+=1
-    return j
-
+            return j        
 
 
 pcap_dirs=[ 'maccdc2012_00001', 'maccdc2012_00002','maccdc2012_00003']
@@ -391,27 +397,15 @@ for pdir in pcap_dirs:
         sns.set(rc={'figure.figsize':(23.4,16.54)})
         support_th=0.1
         lda_dic=dict()
-        service_categorical_features=list(set(service_categorical_features)-set(['username']))
-        for ft in service_categorical_features:
-            df2[ft]=df2[ft].fillna(0)
+        service_categorical_features_infrequent=list(set(service_categorical_features)-set(['username']))
+        for ft in service_categorical_features_infrequent:
+            df2[ft]=df2[ft].fillna('na')
             vc=df2[ft].value_counts()
             vcl=len(vc.values)
             lda_dic[ft]=len(vc.loc[vc>support_th*df_cnt].values)/vcl
         lz=list(zip(lda_dic.values(), lda_dic.keys()))
         lz.sort(reverse=True)
-        gbc=df2.groupby(service_categorical_features)
-        gbc_vals=[len(vv.values) for vv in gbc.groups.values()]
-        gbc_list=list(zip(gbc.groups.keys(),gbc_vals))
-        dff=pd.DataFrame()
-        dff['key']=gbc.groups.keys()
-        dff['vals']=gbc_vals
-        list_conns=[gbc.get_group(gg).shape[0] for gg in gbc.groups]
-        list_attacks=list()
-        for gg in gbc.groups:
-            g1=gbc.get_group(gg)
-            list_attacks.append(g1.loc[g1.attack_bool==True].shape[0])
-        dff['conns']=list_conns
-        dff['attacks']=list_attacks
+        
         dff2=pd.DataFrame()
         dff2['key']=''
         dff2['values']=float(0)
@@ -461,7 +455,7 @@ for pdir in pcap_dirs:
                 dff2.loc[dff2.key==kk2,'cue_median']=g1.collective_uri_entropy.median()
                 dff2.loc[dff2.key==kk2,'rbl_median']=g1.response_body_len.median()
                 dff2.loc[dff2.key==kk2,'rtdm_median']=g1.request_ts_diff_median.median()
-                
+        dff2.to_csv('dff2_'+pdir+'_'+str(index)+'_http.csv')      
  #fig, ((ax11,ax12,ax13,ax14,ax15)) = plt.subplots(5,1, figsize=(22,20))#sharex=True, sharey=True,
 #        #ax11=sns.pairplot(df3_n,vars=['request_body_len', 'response_body_len', 
 #         #  'uri_length','request_ts_diff_median' ],hue='attack_bool')
