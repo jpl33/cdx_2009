@@ -191,7 +191,7 @@ def subset_tupl(tup1,tup2):
             return j        
 
 
-pcap_dirs=[ 'maccdc2012_00001', 'maccdc2012_00002','maccdc2012_00003']
+pcap_dirs=[ 'maccdc2012_00001', 'maccdc2012_00002','maccdc2012_00003',]#['maccdc2012_00004','maccdc2012_00005']#
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -243,10 +243,10 @@ for pdir in pcap_dirs:
     clean_data=False
     
     for index in range(intervals):
-        if pdir=='maccdc2012_00001':
-            if index<5:
-                first_ts+=time_interval
-                continue
+#        if pdir=='maccdc2012_00001':
+#            if index<5:
+#                first_ts+=time_interval
+#                continue
        
         service='http'
         service_coll=get_db()[pdir+'_'+service]
@@ -292,8 +292,6 @@ for pdir in pcap_dirs:
         gb=df2.groupby(['id_orig_h','id_resp_h'])
         dff=pd.DataFrame(index=gb.groups.keys())
         success=df2.loc[df2.status_code==200].shape[0]
-        df2['stat_code_prefix']=df2.loc[~df2.status_code.isnull(),'status_code'].astype(str).str[0].astype(int)
-        success=df2.loc[df2.status_code==200].shape[0]
         #success=df2.loc[df2.status_code==200].shape[0]
         dff['success_freq_pair']=float(0)
         dff['fail_freq_pair']=float(0)
@@ -303,14 +301,7 @@ for pdir in pcap_dirs:
             gtemp=gtemp.loc[~gtemp.status_code.isnull()]
             if gtemp.shape[0]<2:
                 continue
-            if success>0:
-                dff.loc[pair,'success_freq_pair']=gtemp.loc[gtemp.stat_code_prefix<4].shape[0]/gtemp.shape[0]
-                dff.loc[pair,'fail_freq_pair']=gtemp.loc[gtemp.stat_code_prefix>3].shape[0]/gtemp.shape[0]
-                df2.loc[(df2.id_orig_h==pair[0])&(df2.id_resp_h==pair[1]),'success_freq_pair']=dff.loc[[pair],'success_freq_pair']
-                df2.loc[(df2.id_orig_h==pair[0])&(df2.id_resp_h==pair[1]),'fail_freq_pair']=dff.loc[[pair],'fail_freq_pair']
-            else:
-                dff['success_freq_pair']=float(0)
-                dff['fail_freq_pair']=float(0)
+            
             dff.loc[pair,'attacks']=gtemp.loc[gtemp.attack_bool==True,:].shape[0]
             ur_coll=gtemp.uri.value_counts()
             ur_coll_prob=ur_coll/gtemp.shape[0]
@@ -332,26 +323,7 @@ for pdir in pcap_dirs:
     
             
         
-         # # sort the dataframe for the highest success_freq;
-        
-        dff=dff.sort_values(by='attacks', ascending = False)
-        dff.to_csv('dff_'+pdir+'_bin_'+str(index)+'.csv')
-        # # total number of flows of pairs with success_freq less than 90% of all suceesses
-        iqr=stat.iqr(dff.collective_uri_entropy)
-        q3=dff.collective_uri_entropy.quantile(0.75)
-        dff['collective_uri_anomaly']=float(0)
-        dff_sum=dff.num_flows.sum()
-        base_pairs=list()
-        
-        for nn in dff.index:
-            if dff.loc[dff.index==nn,'collective_uri_entropy'].item()>(q3+iqr): 
-                dff.loc[dff.index==nn,'collective_uri_anomaly']=float(1)
-            else:
-                base_pairs.append(nn)
-                
-        outly_pairs=list(set(gb.groups.keys())-set(base_pairs))
-        msg='finish looking for bad flows. Line252: directory= '+pdir+':index='+str(index)
-        myLogger.error(msg)
+     
     
         ind_uri=df2.loc[~df2.uri.isnull()].index.values
         uri_ent_vec=df2.loc[ind_uri,'uri'].apply(ltr_entropy).apply(pd.Series)
@@ -381,7 +353,7 @@ for pdir in pcap_dirs:
            'resp_mime_types_jsd', 'uri_entropy', 'uri_hexadecimal_entropy',
            'uri_punctuation_entropy','uri_number_entropy', 'post_content_entropy',
            'post_content_hexadecimal_entropy',
-           'post_content_punctuation_entropy','collective_uri_entropy','fail_freq_pair','success_freq_pair']
+           'post_content_punctuation_entropy','collective_uri_entropy']
         
         if username_flag:
             all_feature_columns=all_feature_columns+username_columns
@@ -405,7 +377,7 @@ for pdir in pcap_dirs:
             lda_dic[ft]=len(vc.loc[vc>support_th*df_cnt].values)/vcl
         lz=list(zip(lda_dic.values(), lda_dic.keys()))
         lz.sort(reverse=True)
-        
+        df2['categorical_outlyer_index']=float(0)
         dff2=pd.DataFrame()
         dff2['key']=''
         dff2['values']=float(0)
@@ -434,6 +406,7 @@ for pdir in pcap_dirs:
                 anomaly_keys+=(dfft.loc[(dfft['values']<support_th*df_cnt)&(dfft['values']>0),'key'].values.tolist())
             k2=dff2.loc[dff2.level==len(gbl),'key'].values.tolist()
             old_keys=list(set(k2)-set(anomaly_keys))
+        
         dff2['conns']=float(0)
         dff2['attacks']=float(0)
         dff2['outlyr_index']=float(0)
@@ -441,6 +414,9 @@ for pdir in pcap_dirs:
         dff2['rbl_median']=float(0)
         dff2['rtdm_median']=float(0)
         gbl=list()
+        median_list=list()
+        cluster_features=['response_body_len', 
+           'uri_length','request_ts_diff_median','collective_uri_entropy','post_content_length','categorical_outlyer_index']#'request_body_len',
         for kk in lz:
             gbl.append(kk[1])
             gbcc2=df2.groupby(gbl)
@@ -455,7 +431,39 @@ for pdir in pcap_dirs:
                 dff2.loc[dff2.key==kk2,'cue_median']=g1.collective_uri_entropy.median()
                 dff2.loc[dff2.key==kk2,'rbl_median']=g1.response_body_len.median()
                 dff2.loc[dff2.key==kk2,'rtdm_median']=g1.request_ts_diff_median.median()
-        dff2.to_csv('dff2_'+pdir+'_'+str(index)+'_http.csv')      
+            level=len(gbl)
+            key_lst=[ x if dff2.loc[(dff2.key==x),'outlyr_index'].values[0]>0  else 0 for x in gbcc2.groups.keys()]
+            key_lst=[x for x in key_lst if x!=0]
+            for kk3 in key_lst:
+                g2=gbcc2.get_group(kk3)
+                df2.loc[g2.index.values,'categorical_outlyer_index']=dff2.loc[dff2.key==kk3,'outlyr_index'].values[0]
+                g22=g2[cluster_features]
+                g22m=g22.median()
+                g22md=g22.sub(g22m).abs().sort_values(cluster_features).iloc[:1]
+                
+                if dff2.loc[dff2.key==kk3,'conns'].values[0]>(0.05*df_cnt):
+                    median_list.append(g22md.index.values[0])
+                    dff2.loc[dff2.key==kk3,'cluster_median_index']=g22md.index.values[0]
+        dff2.to_csv('dff2_'+pdir+'_'+str(index)+'_http.csv')
+        df2=df2.fillna(0)
+        df2.loc[df2.attack_bool==True,'attack_int']=1
+        df2.loc[df2.attack_bool==False,'attack_int']=0
+        
+        import pyclustering
+        from pyclustering.cluster.kmedoids import kmedoids
+        df2_clstr=df2[cluster_features].values.tolist()
+        kmedoids_instance = kmedoids(df2_clstr, median_list)
+        kmedoids_instance.process()
+        clusters=kmedoids_instance.get_clusters()
+        new_medoids=kmedoids_instance.get_medoids()
+        clusters_sr=pd.Series(clusters)
+        clusters_df=pd.DataFrame(clusters_sr,columns=['df2_index'])
+        clusters_df['conns']=clusters_sr.apply(len)
+        for i,cluster in clusters_df.iterrows():
+            g1=df2.loc[cluster.df2_index]
+            clusters_df.loc[i,'attacks']=g1.loc[g1.attack_bool==True,:].shape[0]
+            df2.loc[cluster.df2_index,'cluster']=i
+            
  #fig, ((ax11,ax12,ax13,ax14,ax15)) = plt.subplots(5,1, figsize=(22,20))#sharex=True, sharey=True,
 #        #ax11=sns.pairplot(df3_n,vars=['request_body_len', 'response_body_len', 
 #         #  'uri_length','request_ts_diff_median' ],hue='attack_bool')
@@ -473,7 +481,18 @@ for pdir in pcap_dirs:
 #        fig14=ax14.fig
 #        fig13.savefig(service_coll.name+'_'+str(index)+'_jsd.png')
 #        fig14.savefig(service_coll.name+'_'+str(index)+'_freq.png')
+        bar_width=0.35
+        bar_index=np.arange(clusters_df.shape[0])
+        fig, axes = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(14,10))
+        axes.bar(bar_index,clusters_df.conns.values,color='b',label='requests')
+        axes.bar(bar_index+bar_width,clusters_df.attacks.values,color='r',label='attacks')
+        plt.xlabel("Clusters")
+        plt.legend(loc=2)
         plt.show()
+        fig.savefig(service_coll.name+'_bin_'+str(index)+'.png')
+        from sklearn import metrics
+        homogeneity,completeness,v_score=metrics.homogeneity_completeness_v_measure(df2.attack_int.values, df2.cluster.values)
+        
         first_ts+=time_interval
     
     
