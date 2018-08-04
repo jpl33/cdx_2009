@@ -268,13 +268,13 @@ for pp in pcap_dirs:
                     srv_sd_norm=df_r1.srv_SD_norm
                     srv_od=df_r1.srv_OD
                     srv_od_norm=df_r1.srv_OD_norm
-                    df_r1['total_outlier_score']=( (srv_sd_norm)+(srv_od_norm)+(conn_sd_norm)+(conn_od_norm))/4
+                    df_r1['total_outlier_score']=float( ( (srv_sd_norm)+(srv_od_norm)+(conn_sd_norm)+(conn_od_norm))/4)
                     sdf=sdf.append(df_r1)
                 
             ensemble_df=ensemble_df.append(sdf)
            
             plt.ion()  
-            fig, ((ax11,ax12,ax13,ax14)) = plt.subplots(1,4, figsize=(22,10))#sharex=True, sharey=True,
+            fig, (ax11,ax12,ax13,ax14,ax15) = plt.subplots(1,5, figsize=(22,13))#sharex=True, sharey=True,
             
             conn_groups = sdf.groupby('conn_attack')
             srv_groups = sdf.groupby('srv_attack')
@@ -315,23 +315,38 @@ for pp in pcap_dirs:
             ax13.set_ylabel('count')
             ax13.set_title('attack/non-attack histograms')
             ax13.legend(loc=2)
-            gg=sdf.total_outlier_score.value_counts()
-            ggl1=gg.index.values
-            ggl2=gg.values
-            poly1=np.polyfit(ggl1,ggl2,10)
-            poly2=np.poly1d(poly1)
-            ax14.plot(sdf.total_outlier_score,poly2(sdf.total_outlier_score),'g^')
-            #ax14.hist(sdf.total_outlier_score,histtype='step')
+            
+            sdf.loc[sdf.total_outlier_score==0,'total_outlier_score']+=1e-10
+            tos_no_attack=sdf.loc[sdf.srv_attack=='false','total_outlier_score']
+            tos_attack=sdf.loc[sdf.srv_attack=='true','total_outlier_score']
+            alpha1,beta1,loc1,scale1=sci.stats.beta.fit(tos_no_attack)
+            fit_score1=sci.stats.beta.rvs(alpha1,beta1,size=tos_no_attack.shape[0])
+            fit_score1.sort()
+            alpha2,beta2,loc2,scale2=sci.stats.beta.fit(tos_attack,floc=0,fscale=1)
+            fit_score2=sci.stats.beta.rvs(alpha2,beta2,size=tos_attack.shape[0])
+            fit_score2.sort()
+            tos_no_attack_sorted=sdf.loc[sdf.srv_attack=='false','total_outlier_score'].sort_values()
+            tos_no_attack_sorted.index=np.arange(len(tos_no_attack_sorted))
+            tos_attack_sorted=sdf.loc[sdf.srv_attack=='true','total_outlier_score'].sort_values()
+            tos_attack_sorted.index=np.arange(len(tos_attack_sorted))
+            ax14.hist(fit_score1,label='fitted no attack beta')
+            ax14.hist(tos_no_attack_sorted,label='no attack total outlier score')
             ax14.set_xlabel('total_outlier_score')
             ax14.set_ylabel('count')
-            ax14.set_title('fitted curve')
+            ax14.set_title('fitted beta curves')
             ax14.legend(loc=2)
+            ax15.hist(fit_score2,label='fitted attack beta')
+            ax15.hist(tos_attack_sorted,label='attack total outlier score')
+            ax15.set_xlabel('total_outlier_score')
+            ax15.set_ylabel('count')
+            ax15.set_title('fitted beta curves')
+            ax15.legend(loc=2)
             plt.show()
             
             fig.savefig(str('conn_'+srv+'_'+pp+'_bin'+str(index)+'.png'),bbox_inches='tight')  
             first_ts+=time_interval
 
-#                    
+
 #            df_s1=pd.Series([service_collection_name,
 #                                index,
 #                                df_cnt,

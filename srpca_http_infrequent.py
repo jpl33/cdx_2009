@@ -191,7 +191,7 @@ def subset_tupl(tup1,tup2):
             return j        
 
 
-pcap_dirs=[ 'maccdc2012_00001', 'maccdc2012_00002','maccdc2012_00003',]#['maccdc2012_00004','maccdc2012_00005']#
+pcap_dirs=['maccdc2012_00005']#[ 'maccdc2012_00001', 'maccdc2012_00002','maccdc2012_00003',]#
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -486,12 +486,15 @@ for pdir in pcap_dirs:
         fig, axes = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(14,10))
         axes.bar(bar_index,clusters_df.conns.values,color='b',label='requests')
         axes.bar(bar_index+bar_width,clusters_df.attacks.values,color='r',label='attacks')
+        from sklearn import metrics
+        homogeneity,completeness,v_score=metrics.homogeneity_completeness_v_measure(df2.attack_int.values, df2.cluster.values)
+        
+        plt.plot([], [], ' ', label=("v_measure="+str(v_score)) )
+
         plt.xlabel("Clusters")
         plt.legend(loc=2)
         plt.show()
         fig.savefig(service_coll.name+'_bin_'+str(index)+'.png')
-        from sklearn import metrics
-        homogeneity,completeness,v_score=metrics.homogeneity_completeness_v_measure(df2.attack_int.values, df2.cluster.values)
         
         first_ts+=time_interval
     
