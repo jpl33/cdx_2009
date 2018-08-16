@@ -52,9 +52,8 @@ for l in prcs_file.readlines():
 for r in remove:
     dl.remove(r)
 
-important_ports=[80,139,445,137,135,111,23,21,22]
-protocols=[ 'ICMP', 'sadmind',
-'Portmap', 'TELNET', 'TCP', 'FTP', 'HTTP']
+important_ports=[80,139,445,137,135,111,23,21,22,53]
+
 
 for fl in dl: 
     with open(home_dir+wpi_dir +fl,'r') as wpi_f:
@@ -70,19 +69,35 @@ for fl in dl:
         ip_proto_dict={1:'icmp',17:'udp',6:'tcp'}
         udp_ll=[c for c in file_df.columns if 'udp' in c]
         tcp_ll=[c for c in file_df.columns if 'tcp' in c]
+        rpc_ll=[c for c in file_df.columns if 'rpc' in c]
+
         if len(udp_ll)>0:
             src_port_udp_vec=file_df.loc[:,'_source.layers.udp.udp.srcport']
             dst_port_udp_vec=file_df.loc[:,'_source.layers.udp.udp.dstport']
+            is_portmap_vec=pd.DataFrame(file_df['_source.layers.udp.udp.port'].astype(float).apply(lambda x: 1 if x ==111 else 0).values,columns=['is_portmap'])
+                    
         else:
             src_port_udp_vec=pd.Series(np.repeat(0,file_df.shape[0]))
             dst_port_udp_vec=pd.Series(np.repeat(0,file_df.shape[0]))
-
+            is_portmap_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]),columns=['is_portmap'])
+            
+        if len(rpc_ll)>0:
+            is_sadmind_vec=pd.DataFrame(file_df['_source.layers.rpc.rpc.program'].astype(float).apply(lambda x: 1 if x ==100232 else 0).values,columns=['is_sadmind'])
+        else:
+            is_sadmind_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]),columns=['is_sadmind'])
+            
         if len(tcp_ll)>0:
             src_port_tcp_vec=file_df.loc[:,'_source.layers.tcp.tcp.srcport']
             dst_port_tcp_vec=file_df.loc[:,'_source.layers.tcp.tcp.dstport']
+            is_telnet_vec=pd.DataFrame(file_df['_source.layers.tcp.tcp.port'].astype(float).apply(lambda x: 1 if x ==23 else 0).values,columns=['is_telnet'])
+            is_ftp_vec=pd.DataFrame(file_df['_source.layers.tcp.tcp.port'].astype(float).apply(lambda x: 1 if x ==21 else 0).values,columns=['is_ftp'])
+            is_http_vec=pd.DataFrame(file_df['_source.layers.tcp.tcp.port'].astype(float).apply(lambda x: 1 if x ==80 else 0).values,columns=['is_http'])
         else:
             src_port_tcp_vec=pd.Series(np.repeat(0,file_df.shape[0]))
             dst_port_tcp_vec=pd.Series(np.repeat(0,file_df.shape[0]))
+            is_telnet_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]),columns=['is_telnet'])
+            is_ftp_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]),columns=['is_ftp'])
+            is_http_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]),columns=['is_http'])
         
         src_port_vec=src_port_udp_vec.combine(src_port_tcp_vec,lambda x1, x2: x2 if pd.isnull(x1) else x1)
         dst_port_vec=dst_port_udp_vec.combine(dst_port_tcp_vec,lambda x1, x2: x2 if pd.isnull(x1) else x1)
@@ -99,12 +114,16 @@ for fl in dl:
         high_dst_port_vec=conn_df.dst_port.astype(int).apply(lambda x: 1 if x >1024 else 0)
         missing_src_port_vec=pd.DataFrame(conn_df.src_port.astype(int).apply(lambda x: 1 if x ==0 else 0).values,columns=['missing_src_port'])
         missing_dst_port_vec=pd.DataFrame(conn_df.dst_port.astype(int).apply(lambda x: 1 if x ==0 else 0).values,columns=['missing_dst_port'])
+        is_icmp_vec=pd.DataFrame(conn_df.ip_proto.apply(lambda x: 1 if x =='icmp' else 0).values,columns=['is_icmp'])
+        pkt_len_vec=pd.DataFrame(file_df['_source.layers.ip.ip.len'].astype(float).values,columns=['pkt_len'])
         
         df_dummies_1=pd.get_dummies(conn_df[['src_ip_addr','dst_ip_addr']])
         df_dummies_2=pd.get_dummies(important_src_port_vec,prefix='important_src_port')
         df_dummies_3=pd.get_dummies(important_dst_port_vec,prefix='important_dst_port')
         df_dummies_4=pd.get_dummies(high_src_port_vec,prefix='high_src_port')
         df_dummies_5=pd.get_dummies(high_dst_port_vec,prefix='high_dst_port')
-        features=[conn_df,df_dummies_1,df_dummies_2,df_dummies_3,df_dummies_4,df_dummies_5,missing_src_port_vec,missing_dst_port_vec]
+        features=[conn_df,df_dummies_1,df_dummies_2,df_dummies_3,df_dummies_4,df_dummies_5,missing_src_port_vec,missing_dst_port_vec,is_icmp_vec,is_portmap_vec,is_sadmind_vec,is_telnet_vec,is_ftp_vec,is_http_vec,pkt_len_vec]
         conn_df=pd.concat(features,axis=1)
         
+protocols=[ 'ICMP', 'sadmind',
+'Portmap', 'TELNET', 'TCP', 'FTP', 'HTTP']
