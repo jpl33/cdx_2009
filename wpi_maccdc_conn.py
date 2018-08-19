@@ -42,20 +42,31 @@ dl=next(os.walk(home_dir+wpi_dir))[2]
 dl.sort()
 remove=[]
 for d in dl:
-    if ( not d.startswith(('inside','outside'))  ):
+    if ( not d.startswith(('maccdc'))  ):
         remove.append(d)
-prcs_file= open('processed_wpi_files.txt', 'r+')
-for l in prcs_file.readlines():
-    l=l.split("\n")[0]
-    if len(l)>1:
-        remove.append(l)
+#prcs_file= open('processed_wpi_files.txt', 'r+')
+#for l in prcs_file.readlines():
+#    l=l.split("\n")[0]
+#    if len(l)>1:
+#        remove.append(l)
 for r in remove:
     dl.remove(r)
 
 important_ports=[80,139,445,137,135,111,23,21,22,53]
-
+import ijson
 
 for fl in dl: 
+    data = []
+    first_ts=1000000
+    last_ts=0
+    with open(fl, 'r') as f:
+        objects = ijson.items(f, '_source.layers')
+        file_data2=list[objects]
+        for row in objects:
+            if row['frame.frame.time_epoch']<first_ts:
+                first_ts=row['frame.frame.time_epoch']
+            if row['frame.frame.time_epoch']>last_ts:
+                last_ts=row['frame.frame.time_epoch']
     with open(home_dir+wpi_dir +fl,'r') as wpi_f:
         from pandas.io.json import json_normalize
         #for line in itertools.islice(wpi_f, coll_count,None):
