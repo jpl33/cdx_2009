@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Aug 14 12:06:19 2018
 
-@author: root
-"""
 
 import pandas as pd
 import math
@@ -21,7 +17,9 @@ from pandas.io.json import json_normalize
 import logging
 import time
 import matplotlib.pyplot as plt
-import seaborn as sns; sns.set(style="ticks", color_codes=True)
+import seaborn as sns
+sns.set(style="white", color_codes=True, context="talk")
+
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
 
@@ -50,7 +48,23 @@ class JSONEncoder(json.JSONEncoder):
 
 def default(o):
      if isinstance(o, np.integer): return int(o)
-   #  raise TypeError
+
+def mongo_json(mydict):
+    mydict2=mydict.copy()
+    for key,value in mydict.items():
+           kk=key.split('.')
+           kd=''
+           if len(kk)>1:
+               for k in kk:
+                   kd=kd+k+'_'
+               kd=kd[:-1]
+               mydict2[kd]=mydict2.pop(key)
+           
+    return mydict2
+               
+
+
+
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
@@ -158,27 +172,58 @@ for fl in dl:
         else:
             conn_df['attack']=True
             
-        conn_df_db=conn_df_db.append(conn_df)
-        #conn_df.loc[:,'timestamp':].iloc[:,1:].to_csv(home_dir+wpi_dir+'_'+fl+'.csv',index=False)
+        conn_df_db=conn_df_db.append(conn_df,ignore_index=True)
         
         
-#line_dict=dict(zip(conn_df.iloc[1,:].index.values,conn_df.iloc[1,:].values))
-#json_ln=json.dumps(line_dict,default=default)
-df_json=conn_df_db.to_json(orient='records')
-get_db()['inside_train'].insert_many(df_json)
-msg='start first rpca. Line131: file= '+fl
-myLogger.error(msg)
-df_mat=conn_df_db.loc[:,'timestamp':].iloc[:,1:].as_matrix()
 
-rpy2.robjects.numpy2ri.activate()
-rpca_pkg=importr("rpca")
-rpca=rpca_pkg.rpca(df_mat)
-L_matrix=np.array(rpca[0])
-S_matrix=np.array(rpca[1])
-L_svd=np.array(rpca[2])
-eigen_values=np.array(L_svd[0])
-eigen_vectors=pd.DataFrame(np.array(L_svd[2]),columns=conn_df.loc[:,'timestamp':].iloc[:,1:].columns)
-eigen_vectors=eigen_vectors.T
-S_mat_df=pd.DataFrame(S_matrix)
-            
+conn_df_db=conn_df_db.fillna(0)
+df_dict=conn_df_db.to_dict(orient='records')
+df_dict2=[mongo_json(ln) for ln in df_dict]
+    
+inside_train_coll=get_db()['inside_train']
+inside_train_coll.insert_many(df_dict2)
+
+
+#doc_list= inside_train_coll.find()
+#conn_df_db=pd.DataFrame(list(doc_list))
+
+
+no_columns=['timestamp','src_ip_addr','dst_ip_addr','src_port','dst_port','ip_proto','attack']
+df_mat=conn_df_db.loc[:,conn_df_db.columns.difference(no_columns)].as_matrix()
+
+#msg='start first rpca. Line131: file= '+fl
+#myLogger.error(msg)
+#
+#rpy2.robjects.numpy2ri.activate()
+#rpca_pkg=importr("rpca")
+#rpca=rpca_pkg.rpca(df_mat,**{'lambda': 0.02})
+#L_matrix=np.array(rpca[0])
+#S_matrix=np.array(rpca[1])
+#L_svd=np.array(rpca[2])
+#eigen_values=np.array(L_svd[0])
+#eigen_vectors=pd.DataFrame(np.array(L_svd[2]),columns=conn_df_db.columns.difference(no_columns))
+#eigen_vectors=eigen_vectors.T
+#S_mat_df=pd.DataFrame(S_matrix,columns=conn_df_db.columns.difference(no_columns))
+#    
+#df_target=pd.DataFrame(index=conn_df_db.index)
+#df_target['attack']=conn_df_db.attack
+#df_target['max_val']=S_mat_df.loc[:,:].abs().max(axis=1)
+#df_target['idxmax']=S_mat_df.loc[:,:].abs().idxmax(axis=1)    
+#
+#fig, axes = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(24,10))
+##sns.barplot(x=df_target.index.values,y=df_target.max_val.values,hue=df_target.attack,ax=axes)
+##axes.bar(df_target.index.values,df_target.max_val.values)
+##plt.show()
+#
+#groups = df_target.groupby('attack')
+#for name, group in groups:   
+#    if name==False:
+#        axes.stem(group.index.values,group.max_val.values,linefmt='C1-',markerfmt='C1+',label='no_attack')
+#    else:
+#        axes.stem(group.index.values,group.max_val.values,linefmt='C2-',markerfmt='C2^',label='attack')
+#
+#plt.legend(loc=2)
+#plt.show()
+
+    
 print('motek')
