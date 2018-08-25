@@ -106,7 +106,7 @@ myLogger.error(msg)
 
 rpy2.robjects.numpy2ri.activate()
 rpca_pkg=importr("rpca")
-rpca=rpca_pkg.rpca(df_mat,**{'lambda': 0.3})
+rpca=rpca_pkg.rpca(df_mat,**{'lambda': 0.1})
 L_matrix=np.array(rpca[0])
 S_matrix=np.array(rpca[1])
 L_svd=np.array(rpca[2])
@@ -135,5 +135,18 @@ for name, group in groups:
 plt.legend(loc=2)
 plt.show()
 
-    
+from sklearn.metrics import roc_curve
+fig_roc, ax_roc = plt.subplots(1, 1, sharex=True, sharey=True,figsize=(24,10))
+ax_roc.set_xlim([-0.05,1.05])
+ax_roc.set_ylim([-0.05,1.05])
+ax_roc.set_xlabel('False Positive Rate')
+ax_roc.set_ylabel('True Positive Rate')
+ax_roc.set_title('ROC Curve')
+alpha=list(np.arange(0.95,0.55,-0.05))
+for a,k in zip(alpha,'bgrcmykw'):
+    tpr,fpr,_ = roc_curve(df_target.attack.apply(lambda x:1 if x==True else 0),df_target.max_val)
+    ax_roc.plot(tpr,fpr,c=k,label=a)
+
+ax_roc.legend(loc='lower left')
+plt.show()
 print('motek')
