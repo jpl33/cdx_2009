@@ -9,6 +9,8 @@ import json
 import pymongo
 import os
 import itertools
+import csv
+import datetime 
 
 import rpy2
 from rpy2.robjects.packages import importr
@@ -73,6 +75,15 @@ db = client['local']
 def get_db():
     return db
 
+def   time_to_ts(row_ts):  
+      strd=row_ts[:-2]
+      dt=datetime.datetime.strptime(strd,'%m/%d/%y-%H:%M:%S.%f')
+      snrt_ts = dt.timestamp()
+      snrt_ts=snrt_ts+7200
+      return float(snrt_ts)
+
+
+
 dff=pd.DataFrame()
 dl=next(os.walk(home_dir+wpi_dir))[2]
 dl.sort()
@@ -80,7 +91,7 @@ remove=[]
 inside_outside_flag='outside'
 train_test_flag='train'
 for d in dl:
-    if ( not d.startswith('maccdc2012')  ):
+    if ( not d.startswith('maccdc2012_00002')  ):
         remove.append(d)
 #prcs_file= open('processed_wpi_files.txt', 'r+')
 #for l in prcs_file.readlines():
@@ -93,38 +104,76 @@ for r in remove:
 important_ports=[80,139,445,137,135,111,23,21,22,53]
 
 conn_df_db=pd.DataFrame()
-
-with open(home_dir+'\\maccdc2012_00001\\alert.csv' ,'r') as snort_f:
-    snort_lines=snort_f.readlines()
+snrt_frmt=['timestamp','sig_generator','sig_id','sig_rev','msg','proto','src','srcport','dst','dstport','ethsrc','ethdst','ethlen','tcpflags','tcpseq','tcpack','tcplen','tcpwindow','ttl','tos','id','dgmlen','iplen','icmptype','icmpcode','icmpid','icmpseq']
+with open(home_dir+'\\maccdc2012_00002\\alert.csv' ,'r') as snort_f:
+    snort_lines=list()
+    reader = csv.reader(snort_f)
+    for line in reader:
+        line_dict=dict(zip(snrt_frmt,line))
+        line_dict['timestamp']=time_to_ts(line_dict['timestamp'])
+        snort_lines.append(line_dict)
     
 first_ts=float(0)
-old_ts=0
-line_num=1
+snort_line_num=24
 time_interval=180
-
+file_df=pd.DataFrame()
 for fl in dl: 
     with open(home_dir+wpi_dir +fl,'r') as wpi_f:
-        with open(home_dir+wpi_dir +'tail_'+str(dl.index(fl)+1)+'.json','r') as tail_f:
+        with open(home_dir+wpi_dir +'tail2_'+str(dl.index(fl)+1)+'.json','r') as tail_f:
             last_line=tail_f.readline()
         last_line=json.loads(last_line)
         last_ts=float(last_line['layers']['frame']['frame_frame_time_epoch'])
+        last_frame_num=float(last_line['layers']['frame']['frame_frame_number'])
         
         for line in itertools.islice(wpi_f,1,2):
             first_line=json.loads(line)
             first_ts=float(first_line['layers']['frame']['frame_frame_time_epoch'])
+            #line_data=first_line
             ts=first_ts
-        intervals=math.ceil((last_ts-first_ts)/time_interval)
+        intervals=math.ceil(last_ts-first_ts)
         for index in range(intervals):
-            file_df=pd.DataFrame()
+            if index==0:
+                line_num=(15252*2)+1
+            else:
+                line_num=1
             for line in itertools.islice(wpi_f,line_num,None,2):
                 if ((index<intervals)&(ts>first_ts+1)) | (not line) :
+                #if(float(line_data['layers']['frame']['frame_frame_number'])>11):
+                    line_data=json.loads(line)
+                    line_df=json_normalize(line_data)
+                    line_df['attack']=0
+#                    if 'tcp' in line_data['layers'].keys():
+#                        proto_flag='long'
+#                        snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],int(line_data['layers']['tcp']['tcp_tcp_srcport']),line_data['layers']['ip']['ip_ip_dst'],int(line_data['layers']['tcp']['tcp_tcp_dstport']))
+#                    else:
+#                        if 'udp' in line_data['layers'].keys():
+#                            proto_flag='long'
+#                            snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],int(line_data['layers']['udp']['udp_udp_srcport']),line_data['layers']['ip']['ip_ip_dst'],int(line_data['layers']['udp']['udp_udp_dstport']))
+#                        else:
+#                            proto_flag='short'
+#                            if 'ip' in line_data['layers'].keys():
+#                                snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],line_data['layers']['ip']['ip_ip_dst'])
+#                            else:
+#                                snort_tuple=(ts,'127.0.0.1','127.0.0.1')
+#                    if proto_flag=='long':
+#                        if (snort_tuple[0]==snort_lines[snort_line_num]['timestamp'])&(snort_tuple[1]==snort_lines[snort_line_num]['src'])&(snort_tuple[2]==int(snort_lines[snort_line_num]['srcport']))&(snort_tuple[3]==snort_lines[snort_line_num]['dst'])&(snort_tuple[4]==int(snort_lines[snort_line_num]['dstport'])):
+#                            line_df['attack']=1
+#                            snort_line_num+=1
+#                        else:
+#                            line_df['attack']=0
+#                    else:
+#                        if (snort_tuple[0]==snort_lines[snort_line_num]['timestamp'])&(snort_tuple[1]==snort_lines[snort_line_num]['src'])&(snort_tuple[2]==snort_lines[snort_line_num]['dst']):
+#                            line_df['attack']=1
+#                            snort_line_num+=1
+#                        else:
+#                            line_df['attack']=0
+                    file_df=file_df.append(line_df)
                     file_df=file_df.set_index(np.arange(file_df.shape[0]))
-                    file_df=file_df.loc[:file_df.shape[0]-2,:]
                     conn_df=pd.DataFrame(index=file_df.index.values)
                     file_df=file_df.fillna(0)
                     src_ip_vec=file_df.loc[:,'layers.ip.ip_ip_src']
                     dst_ip_vec=file_df.loc[:,'layers.ip.ip_ip_dst']
-                    ts_vec=file_df.loc[:,'layers.frame.frame_frame_time_epoch']
+                    ts_vec=file_df.loc[:,'layers.frame.frame_frame_time_epoch'].astype(float)
                     ip_proto_vec=file_df.loc[:,'layers.ip.ip_ip_proto']
                     ip_proto_dict={0:'other',1:'icmp',17:'udp',6:'tcp',88:'other'}    
                     udp_ll=[c for c in file_df.columns if 'udp' in c]
@@ -160,16 +209,16 @@ for fl in dl:
                         is_ftp_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]).astype(int),columns=['is_ftp'])
                         is_http_vec=pd.DataFrame(np.repeat(0,file_df.shape[0]).astype(int),columns=['is_http'])
                     
-                    src_port_vec=src_port_udp_vec.combine(src_port_tcp_vec,lambda x1, x2: x2 if pd.isnull(x1) else x1).fillna(0).astype(int)
-                    dst_port_vec=dst_port_udp_vec.combine(dst_port_tcp_vec,lambda x1, x2: x2 if pd.isnull(x1) else x1).fillna(0).astype(int)
+                    src_port_vec=src_port_udp_vec.combine(src_port_tcp_vec,lambda x1, x2: x2 if x1==0 else x1).fillna(0).astype(int)
+                    dst_port_vec=dst_port_udp_vec.combine(dst_port_tcp_vec,lambda x1, x2: x2 if x1==0 else x1).fillna(0).astype(int)
                     conn_df['src_ip_addr']=src_ip_vec
                     conn_df['dst_ip_addr']=dst_ip_vec
-                    conn_df['ip_proto']=pd.Series(ip_proto_vec).astype(int).apply(lambda x: ip_proto_dict[x])
+                    conn_df['ip_proto']=pd.Series(ip_proto_vec).astype(int).apply(lambda x: ip_proto_dict.setdefault(x,'other'))
                     conn_df['src_port']=src_port_vec.astype(int)
                     conn_df['dst_port']=dst_port_vec.astype(int)
                     conn_df['timestamp']=ts_vec
                     conn_df['bin']=index
-            
+                    conn_df['attack']=file_df.attack
                     
                     important_src_port_vec=conn_df.src_port.astype(int).apply(lambda x: 1 if x in important_ports else 0).astype(int)
                     important_dst_port_vec=conn_df.dst_port.astype(int).apply(lambda x: 1 if x in important_ports else 0).astype(int)
@@ -187,19 +236,57 @@ for fl in dl:
                     df_dummies_5=pd.get_dummies(high_dst_port_vec,prefix='high_dst_port')
                     features=[conn_df,df_dummies_1,df_dummies_2,df_dummies_3,df_dummies_4,df_dummies_5,missing_src_port_vec,missing_dst_port_vec,is_icmp_vec,is_portmap_vec,is_telnet_vec,is_ftp_vec,is_http_vec,pkt_len_vec]#,is_sadmind_vec
                     conn_df=pd.concat(features,axis=1)
-                    conn_df_db=conn_df_db.append(conn_df,ignore_index=True)
-                    first_ts+=1
+                    conn_df=conn_df.fillna(0)
+                    df_dict=conn_df.to_dict(orient='records')
+                    df_dict2=[mongo_json(ln) for ln in df_dict]
+                        
+                    inside_train_coll=get_db()['maccdc2012_00002_train']
+                    inside_train_coll.insert_many(df_dict2)
+                    file_df=pd.DataFrame()
+                    #conn_df_db=conn_df_db.append(conn_df,ignore_index=True)
+                    if index==0:
+                        first_ts=ts
+                    else:
+                        first_ts+=1
                     break
                 
                 line_data=json.loads(line)
                 ts=float(line_data['layers']['frame']['frame_frame_time_epoch'])
-                msg='index= '+str(index)+':ts= '+str(ts)+'file_df.shape= '+str(file_df.shape[0])
+                msg='index= '+str(index)+' :ts= '+str(ts)+' file_df.shape= '+str(file_df.shape[0])
                 myLogger.error(msg)
                 line_df=json_normalize(line_data)
+                line_df['attack']=0
+#                if 'tcp' in line_data['layers'].keys():
+#                    proto_flag='long'
+#                    snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],int(line_data['layers']['tcp']['tcp_tcp_srcport']),line_data['layers']['ip']['ip_ip_dst'],int(line_data['layers']['tcp']['tcp_tcp_dstport']))
+#                else:
+#                    if 'udp' in line_data['layers'].keys():
+#                        proto_flag='long'
+#                        snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],int(line_data['layers']['udp']['udp_udp_srcport']),line_data['layers']['ip']['ip_ip_dst'],int(line_data['layers']['udp']['udp_udp_dstport']))
+#                    else:
+#                        proto_flag='short'
+#                        if 'ip' in line_data['layers'].keys():
+#                            snort_tuple=(ts,line_data['layers']['ip']['ip_ip_src'],line_data['layers']['ip']['ip_ip_dst'])
+#                        else:
+#                            snort_tuple=(ts,'127.0.0.1','127.0.0.1')
+#                if proto_flag=='long':
+#                    if (snort_tuple[0]==snort_lines[snort_line_num]['timestamp'])&(snort_tuple[1]==snort_lines[snort_line_num]['src'])&(snort_tuple[2]==int(snort_lines[snort_line_num]['srcport']))&(snort_tuple[3]==snort_lines[snort_line_num]['dst'])&(snort_tuple[4]==int(snort_lines[snort_line_num]['dstport'])):
+#                        line_df['attack']=1
+#                        snort_line_num+=1
+#                    else:
+#                        line_df['attack']=0
+#                else:
+#                    if (snort_tuple[0]==snort_lines[snort_line_num]['timestamp'])&(snort_tuple[1]==snort_lines[snort_line_num]['src'])&(snort_tuple[2]==snort_lines[snort_line_num]['dst']):
+#                        line_df['attack']=1
+#                        snort_line_num+=1
+#                    else:
+#                        line_df['attack']=0
+                
+                
                 file_df=file_df.append(line_df)
         
             
-        conn_df_db=conn_df_db.append(conn_df,ignore_index=True)
+#        conn_df_db=conn_df_db.append(conn_df,ignore_index=True)
         
         
 
@@ -207,7 +294,7 @@ conn_df_db=conn_df_db.fillna(0)
 df_dict=conn_df_db.to_dict(orient='records')
 df_dict2=[mongo_json(ln) for ln in df_dict]
     
-inside_train_coll=get_db()[inside_outside_flag+'_'+train_test_flag]
+inside_train_coll=get_db()['maccdc2012_00001_train']
 inside_train_coll.insert_many(df_dict2)
 
 

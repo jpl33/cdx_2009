@@ -8,6 +8,7 @@ import scipy as sci
 import json
 import pymongo
 import os
+import csv
 
 import rpy2
 from rpy2.robjects.packages import importr
@@ -27,7 +28,7 @@ home_dir='D:\\personal\\msc\\maccdc_2012\\'
 
 
 logFormt='%(asctime)s: %(filename)s: %(lineno)d: %(message)s'
-fh=logging.FileHandler(filename=home_dir+'error.log')
+fh=logging.FileHandler(filename=home_dir+'error2.log')
 fh.setLevel(logging.DEBUG)
 frmt=logging.Formatter(fmt=logFormt)
 fh.setFormatter(frmt)
@@ -65,6 +66,12 @@ def mongo_json(mydict):
     return mydict2
                
 
+def   time_to_ts(row_ts):  
+      strd=row_ts[:-2]
+      dt=datetime.datetime.strptime(strd,'%m/%d/%y-%H:%M:%S.%f')
+      snrt_ts = dt.timestamp()
+      snrt_ts=snrt_ts+7200
+      return float(snrt_ts)
 
 
 
@@ -86,29 +93,60 @@ train_test_flag='train'
 important_ports=[80,139,445,137,135,111,23,21,22,53]
 
 
-   
-inside_train_coll=get_db()[inside_outside_flag+'_'+train_test_flag]
+snrt_frmt=['timestamp','sig_generator','sig_id','sig_rev','msg','proto','src','srcport','dst','dstport','ethsrc','ethdst','ethlen','tcpflags','tcpseq','tcpack','tcplen','tcpwindow','ttl','tos','id','dgmlen','iplen','icmptype','icmpcode','icmpid','icmpseq']
+
+
+inside_train_coll=get_db()['maccdc2012_00002_train']
 #inside_train_coll.insert_many(df_dict2)
 
+#with open(home_dir+'\\maccdc2012_00002\\alert.csv' ,'r') as snort_f:
+#    snort_lines=list()
+#    reader = csv.reader(snort_f)
+#    for line in reader:
+#        line_dict=dict(zip(snrt_frmt,line))
+#        line_dict['timestamp']=time_to_ts(line_dict['timestamp'])
+#        snort_lines.append(line_dict)
+#
+#for counter, dd in enumerate(snort_lines): 
+#    if (dd['proto']=='TCP')|(dd['proto']=='UDP'):
+#        snort_tuple=(dd['timestamp'],dd['src'],int(dd['srcport']),dd['dst'],int(dd['dstport']))
+#        snort_docs=inside_train_coll.find({'timestamp':snort_tuple[0],'src_ip_addr':snort_tuple[1],'src_port':snort_tuple[2],'dst_ip_addr':snort_tuple[3],'dst_port':snort_tuple[4]})
+#    else:
+#        snort_tuple=(dd['timestamp'],dd['src'],dd['dst'])
+#        snort_docs=inside_train_coll.find({'timestamp':snort_tuple[0],'src_ip_addr':snort_tuple[1],'dst_ip_addr':snort_tuple[2],'ip_proto':dd['proto'].lower()})
+#
+#    snort_df=pd.DataFrame(list(snort_docs))
+#    if snort_df.shape[0]>0:
+#        inside_train_coll.update_one({'_id':snort_df.loc[0,'_id']},{'$set':{'attack':1}})
+#    else:
+#        msg='missed snort signature:'+str(snort_lines.index(dd))
+#        myLogger.error(msg)
+#        break
 
-doc_list= inside_train_coll.find()
+#last_ts=snort_lines[counter-1]['timestamp']
+first_doc= inside_train_coll.find(sort=[('_id',1)],limit=1)
+first_line=pd.DataFrame(list(first_doc)).to_dict(orient='records')
+first_ts=first_line[0]['timestamp']
+
+#doc_list= inside_train_coll.find()
+doc_list=inside_train_coll.find({'timestamp':{'$lte':first_ts+15}})
 conn_df_db=pd.DataFrame(list(doc_list))
 conn_df_db=conn_df_db.fillna(0)
+conn_df_shape=conn_df_db.shape[0]
+train=math.floor(2*conn_df_shape/3)
 
 no_columns=['_id','timestamp','src_ip_addr','dst_ip_addr','src_port','dst_port','ip_proto','attack','pkt_len']
-df_mat=conn_df_db.loc[9400:,conn_df_db.columns.difference(no_columns)].as_matrix()
-msg='start first rpca. Line104'
+df_mat=conn_df_db.loc[:,conn_df_db.columns.difference(no_columns)].as_matrix()
+msg='start first rpca. Line140'
 myLogger.error(msg)
 
 rpy2.robjects.numpy2ri.activate()
 rpca_pkg=importr("rpca")
-#import rpy2.rinterface as rinterface
-#rinterface.initr()
+import rpy2.rinterface as rinterface
+rinterface.initr()
 df_mat_r=robjects.r.matrix(df_mat,nrow=df_mat.shape[0])
-print('lulu')
-aa3=3
-#del(df_mat)
-del(conn_df_db)
+
+#del(conn_df_db)
 gc.collect()
 #rpca=rpca_pkg.rpca(df_mat,**{'lambda': 0.1})
 #L_matrix=np.array(rpca[0])
@@ -140,7 +178,7 @@ gc.collect()
 #plt.show()
 
 from sklearn.metrics import roc_curve, roc_auc_score,precision_recall_curve,f1_score
-lambda_c=list(np.arange(0.03,0.15,0.03))
+lambda_c=[0.12]#list(np.arange(0.13,0.15,0.03))
 fig_plot, (ax_roc,ax_pr) = plt.subplots(1,2, sharex=True, sharey=True,figsize=(20,18))
 ax_roc.set_xlim([-0.05,1.05])
 ax_roc.set_ylim([-0.05,1.05])
@@ -157,7 +195,7 @@ auc_list=list()
 f1_list=list()
 #alpha=list(np.arange(0.95,0.55,-0.05))
 alpha=0.95
-for ll,k in zip(lambda_c,'bgrc'):#mykw'):
+for ll,k in zip(lambda_c,'b'):#grc'):#mykw'):
     s_time=time.time()
     rpca=rpca_pkg.rpca(df_mat,**{'lambda': ll})
     e_time=time.time()
