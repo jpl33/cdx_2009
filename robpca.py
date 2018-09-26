@@ -167,7 +167,7 @@ for dd in last_doc: last_ts=dd['ts']
 
 intervals=5#math.floor((last_ts-first_ts)/time_interval)
 
-clean_data=False
+clean_data=True
 
 for index in range(intervals):
     
@@ -462,7 +462,7 @@ for index in range(intervals):
             
     conn_groups = df.groupby('attack_bool')
     #srv_groups = sdf.groupby('srv_attack')
-    
+   
     for name, group in conn_groups:
         if name==0:
             ax11.scatter(x=group["SD"],y=group['OD'],label='no attack')
@@ -531,7 +531,7 @@ for index in range(intervals):
 #    
     llp=json.dumps(outly_pairs)
     ld2=pd.DataFrame(loadings,index=df_feature_cols1)
-    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp,'PCs':ld2.to_json()}},upsert=False)
+    collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp,'PCs':ld2.to_json(),'SD_threhold':SD_th[0],'OD_threhold':OD_th[0]}},upsert=False)
     msg='finished processing bin. Line513: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
