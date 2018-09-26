@@ -69,11 +69,11 @@ def json_bool(obj):
 
 
 
-pcap_dir= 'maccdc2012_00001'
+pcap_dir= 'maccdc2012_00002'
 
 client = pymongo.MongoClient('localhost')
 db = client['local']
-collection_pcap = get_db()[pcap_dir+'_conn']
+collection_pcap = get_db()['inside_train_bro']
 collection_bins= get_db()['bins']
 finish=collection_pcap.count()
 time_interval=180
@@ -150,11 +150,11 @@ def orig_category_frequency_vectors(df2,feature_list):
     return df2
 
 
-df_feature_cols1=['duration','orig_bytes','resp_bytes','orig_pkts','resp_pkts','orig_pkts_size','orig_pkts_intr','orig_pkts_diff','resp_pkts_diff','ts_diff','service_jsd','history_jsd','conn_state_jsd','orig_to_resp','resp_to_orig']# 'service_freq','history_freq','conn_state_freq',
+df_feature_cols1=['duration','resp_bytes','orig_pkts','resp_pkts','orig_pkts_intr','orig_pkts_diff','orig_bytes','orig_pkts_size','resp_pkts_diff','ts_diff','service_jsd','history_jsd','proto_jsd','id_resp_p_jsd','conn_state_jsd','orig_to_resp','orig_entropy','resp_to_orig']# 'service_freq','history_freq','conn_state_freq',,
+internal_network_prefix='172.16'
 
 
-
-category_features=['service','history','conn_state']
+category_features=['service','history','id_resp_p','proto','conn_state']
 #doc_t=collection_pcap.find(sort=[('_Id',1)],limit=interval_size,skip=index*interval_size)
 # # find first timestamp
 first_doc= collection_pcap.find(sort=[('ts',1)],limit=1)
@@ -165,18 +165,12 @@ last_doc= collection_pcap.find(sort=[('ts',-1)],limit=1)
 # # we received a collection of ONE,but we only care about the first timestamp
 for dd in last_doc: last_ts=dd['ts']
 
-intervals=5#math.floor((last_ts-first_ts)/time_interval)
-
-clean_data=False
+intervals=1
 
 for index in range(intervals):
     
-    if index==intervals-1:
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
-    else:
-        # # find from the timestamp, up to the pre-set time interval size
-        # #  find only the flows whose 'orig_bytes'>0 => meaning they have some TCP-level activity
-        doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lt':first_ts+time_interval}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
+    
+    doc_tt=collection_pcap.find({'$and':[{'ts':{'$gte':first_ts}},{'ts':{'$lte':last_ts}},{'$or':[{'orig_bytes':{'$gt':0}},{'service':{'$exists':'true'}}]}]})
 
     df =  pd.DataFrame(list(doc_tt)) 
     # # number of flows in bin
@@ -194,7 +188,11 @@ for index in range(intervals):
             ft_freq=df[feature].value_counts()/df_cnt
             for idd in ft_freq.index.values:
                 df.loc[df[feature]==idd,feature+'_freq']= ft_freq.loc[idd]
-                
+    
+    df['udp_resp_p_freq']=float(0)    
+    udp_resp_df=df.loc[(df.proto=='udp')&(df.id_resp_p!=53),'id_resp_p'].value_counts()/df_cnt
+    for resp_p in udp_resp_df.index.values:
+        df.loc[(df.proto=='udp')&(df.id_resp_p==resp_p),'udp_resp_p_freq']=udp_resp_df.loc[resp_p]
     # # prepping df pairwise feature columns
     orig_category_features=[x+'_orig_freq'  for x in category_features]
     for feature in orig_category_features:
@@ -257,14 +255,17 @@ for index in range(intervals):
     
     for src in anomal_lst:
         if df4.loc[df4.id_orig_h==src,'flows'].sum()>df4.loc[df4.id_resp_h==src,'flows'].sum():
+            if not (src.startswith(internal_network_prefix)):
                 anomal_rate=df4.loc[df4.id_resp_h==src,'flows'].sum()/df4.loc[df4.id_orig_h==src,'flows'].sum()
                 df4.loc[df4.id_resp_h==src,'orig_to_resp']=anomal_rate
                 df.loc[(df.id_resp_h==src),'orig_to_resp']=anomal_rate
         else:   
             if df4.loc[df4.id_orig_h==src,'flows'].sum()<df4.loc[df4.id_resp_h==src,'flows'].sum():
+                if not (src.startswith(internal_network_prefix)):
                     anomal_rate=df4.loc[df4.id_orig_h==src,'flows'].sum()/df4.loc[df4.id_resp_h==src,'flows'].sum()
                     df4.loc[df4.id_orig_h==src,'resp_to_orig']=anomal_rate
                     df.loc[df.id_orig_h==src,'resp_to_orig']=anomal_rate
+        
     
     gb2= df4.groupby('id_orig_h')
     for orig_addr in gb2.groups:
@@ -281,22 +282,19 @@ for index in range(intervals):
             dd=sci_stats.entropy(gtemp4.flows.values)
             df4.loc[gtemp4.index.values,'resp_entropy']=dd    
             df.loc[df.id_orig_h==resp_addr,'resp_entropy']=dd
-
-
-
-                
-    df=df.fillna(0)
-   
+        
     
-    gb1=df.groupby('id_orig_h')
+    df=df.fillna(0)
+
+    
+    gb1=df.groupby(['id_orig_h','proto'])
     for orig in gb1.groups:
         gtemp1=gb1.get_group(orig)
         cc=category_features
         gtemp1=orig_category_frequency_vectors(gtemp1,cc)
         for feature in category_features:
-#            gtemp[feature+'_pair_freq']=gtemp[feature+'_pair_freq']
             gtemp1[feature+'_jsd']=jsd(gtemp1[feature+'_freq'],gtemp1[feature+'_orig_freq'])
-        
+            
         for ind in gtemp1.index.values:
             for feature in category_features:
                 fi=category_features.index(feature)
@@ -336,41 +334,39 @@ for index in range(intervals):
     msg='finish looking for bad flows. Line252: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
+    df_clean=df.copy()
+#    for ppn in outly_pairs:
+#        # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
+#        df_clean=df_clean[~df_clean.index.isin(gdict[ppn].values)]
+#        df_clean=df_clean[df_feature_cols1]
+#        df_clean=df_clean.fillna(0)
+    
+    #df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
+    #df_c_n=df_c_n.fillna(0)
     df3=df[df_feature_cols1]
-    df3_n=(df3-df3.mean() )/df3.std(ddof=0)
-
-    if clean_data:
-        df_clean=df.copy()
-        for ppn in outly_pairs:
-            # # dump all flows belonging to orig-resp pairs in outly_pairs from the overall bin flows
-            df_clean=df_clean[~df_clean.index.isin(gdict[ppn].values)]
-            df_clean=df_clean[df_feature_cols1]
-            df_clean=df_clean.fillna(0)
-        
-        
-        df_clean=df_clean[df_feature_cols1]
-        df_c_n=(df_clean-df_clean.mean())/df_clean.std(ddof=0)
-        df_c_n=df_c_n.fillna(0)
-        df3_n=(df3-df_clean.mean() )/df_clean.std(ddof=0)
-        dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
-
+    #df3_norm=(df3-df_clean.mean() )/df_clean.std(ddof=0)
+    df3_norm=(df3-df3.mean() )/df3.std(ddof=0)
+    dirty_flws=list(set(df3.index.values)-set(df_clean.index.values))
+    df3_target=df3_norm.copy()
+    df3_target['attack']=df.attack
+    for ft in df_feature_cols1:
+        df3_target.loc['kurtosis',ft]=sci_stats.kurtosis(df3_norm[ft].values)
+        df3_target.loc['skew',ft]=sci_stats.skew(df3_norm[ft].values)
+    kurt_ser=df3_target.loc['kurtosis','duration':'resp_to_orig']
+    kurt_iqr=sci_stats.iqr(kurt_ser.values)
+    kurt_075=kurt_ser.quantile(0.75)
+    kurt_ext=[ ft if kurt_ser[ft]>(kurt_075+1.5*kurt_iqr) else 0   for ft in df_feature_cols1]
     
-    df3_norm=df3_n.fillna(0)
-
+    df_mat=df3_norm.as_matrix()
+    #df_mat=df_c_n.as_matrix()
     
-    if clean_data:    
-        df_mat=df_c_n.as_matrix()
-    else:
-        df_mat=df3_norm.as_matrix()
-    
-    
-    msg='start first robpca. Line369: directory= '+pcap_dir+':index='+str(index)
+    msg='start first robpca. Line269: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
     
     rpy2.robjects.numpy2ri.activate()
     rospca=importr("rospca")
     rpca=rospca.robpca(x=df_mat,mcd=False,ndir=5000)
-    loadings=np.array(rpca[0])
+    all_loadings=np.array(rpca[0])
     e_vals=np.array(rpca[1])
     scores=np.array(rpca[2])
     center=np.array(rpca[3])
@@ -378,15 +374,27 @@ for index in range(intervals):
     H1=np.array(rpca[6])
     SD=np.array(rpca[9])
     OD=np.array(rpca[10])
-    SD_th=np.array(rpca[11])
+    SD_th_r=np.array(rpca[11])
     OD_th=np.array(rpca[12])
     SD_flag=np.array(rpca[13])
     OD_flag=np.array(rpca[14])
     
    
 
+    e_vals_relative=e_vals/sum(e_vals)
+    cum_variance=0
+    k=0
+    loadings=list()
     
-
+    for e_val in e_vals_relative:
+        cum_variance+=e_val
+        loadings.append(all_loadings[:,k])
+        k+=1
+        if cum_variance>0.95:
+            break
+        
+    loadings=np.array(loadings).T
+    e_vals=e_vals[:k]
     # # standardized Data Frame- robust PCA center multiplied by the PCA loadings, will give us our PCA scores
     sc_3=(df3_norm.as_matrix()-center).dot(loadings)
     sd_3=pd.DataFrame()
@@ -402,6 +410,7 @@ for index in range(intervals):
     sd_3['sd_mine']=sd_3.iloc[:,0:sc_3.shape[1]].sum(axis=1)
     sd_3['sd_mine']=np.sqrt(sd_3['sd_mine'].values)
     sd_3['sd_flag']=1
+    SD_th=np.array([math.sqrt(sci_stats.chi2.ppf(0.975,df=k))])
     sd_3.loc[sd_3.sd_mine>SD_th[0],'sd_flag']=0
     
     # #  compute the PCA sub-space covariance matrix
@@ -438,13 +447,19 @@ for index in range(intervals):
     df.loc[sd_3.OD_feature!=0,'OD_feature']=feat_vec_od
     
     # # find df_clean index that was used for mcd
-    #mcd_index=df3_norm.iloc[H1==1].index.values
-    #mcd_index=df_mat.iloc[H1==1].index.values
-    
+    mcd_index=df3_norm.iloc[H1==1].index.values
+    #mcd_index=df_c_n.iloc[H1==1].index.values
     
     df["mcd"]=False
-    #df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
-    df.loc[np.where(H1==1)[0],'mcd']=True
+    df.loc[df3_norm.iloc[H1==1].index.values,'mcd']=True
+    #df.loc[df_c_n.iloc[H1==1].index.values,'mcd']=True
+    df3_target['mcd']=df.mcd
+    ld2=pd.DataFrame(loadings,index=df_feature_cols1)
+    ld2['kurtosis']=float(0)
+    ld2['skew']=float(0)
+    for ft in df_feature_cols1:
+        ld2.loc[ft,'kurtosis']=sci_stats.kurtosis(df3_norm[ft].values)
+        ld2.loc[ft,'skew']=sci_stats.skew(df3_norm[ft].values)
      
     msg='start single line write to mongo . Line470: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)
@@ -454,36 +469,35 @@ for index in range(intervals):
     
     df.to_csv(str('df_'+pcap_dir+'_'+'bin_'+str(index)+'.csv'))
     collection_pcap.update_many({'_id': {'$in': bin_lst}},{'$set':{'bin':index}})
-    
-    
-        
+
+      
     plt.ion()  
     fig, (ax11) = plt.subplots(1,1, figsize=(22,13))#sharex=True, sharey=True,
             
-    conn_groups = df.groupby('attack_bool')
+    conn_groups = df.groupby('attack')
     #srv_groups = sdf.groupby('srv_attack')
+    ttl=list()
     
     for name, group in conn_groups:
         if name==0:
             ax11.scatter(x=group["SD"],y=group['OD'],label='no attack')
+            #ttl.append(group['outlier_score'])
         else:
             ax11.scatter(x=group["SD"],y=group['OD'],label='attack')
-            ax11.axhline(y=OD_th[0])#df.loc[df.OD_anomaly==True,'OD'].min() )
-            ax11.axvline(x=SD_th[0])#]df.loc[df.SD_anomaly==True,'SD'].min() )                       
+           # ttl.append(group['outlier_score'])
+            ax11.axhline(y=df.loc[df.OD_anomaly==True,'OD'].min() )
+            ax11.axvline(x=df.loc[df.SD_anomaly==True,'SD'].min() )                       
             ax11.set_xlabel("Mahalanobis DIstance (SD)  F1=")#+str(round(conn_SD_F1,2)))
             ax11.set_ylabel("PCA residuals (OD) F1=")#+str(round(conn_OD_F1,2)))
             ax11.set_title('TCP Connection Analysis')
             ax11.legend(loc='upper left')
     plt.show()
             
-    fig.savefig(str(pcap_dir+'_bin'+str(index)+'_biplot.png'),bbox_inches='tight')  
+    fig.savefig(str('inside_train_biplot.png'),bbox_inches='tight')  
 
     
-    
-
     msg='start bulk write to mongo. Line565: directory= '+pcap_dir+':index='+str(index)
-    myLogger.error(msg)
-    
+    myLogger.error(msg) 
     
     from pymongo import UpdateOne
     time_bulk=timeit.default_timer()
@@ -491,16 +505,21 @@ for index in range(intervals):
     bulk=collection_pcap.initialize_unordered_bulk_op()
     write_list=list()
     for idd in bin_lst:   
-        write_list.append(UpdateOne({'_id':idd},{'$set':{'orig_to_resp_freq':df.loc[df._id==idd,'orig_to_resp_freq'].values[0]
+        write_list.append(UpdateOne({'_id':idd},{'$set':{'resp_to_orig':df.loc[df._id==idd,'resp_to_orig'].values[0]
+                                                    ,'orig_to_resp':df.loc[df._id==idd,'orig_to_resp'].values[0]
                                                     ,'orig_pkts_diff':df.loc[df._id==idd,'orig_pkts_diff'].values[0]
                                                     ,'resp_pkts_diff':df.loc[df._id==idd,'resp_pkts_diff'].values[0]
                                                     ,'ts_diff':df.loc[df._id==idd,'ts_diff'].values[0]
                                                     ,'orig_pkts_intr':df.loc[df._id==idd,'orig_pkts_intr'].values[0]
                                                     ,'orig_pkts_size':df.loc[df._id==idd,'orig_pkts_size'].values[0]
                                                     ,'cumultv_pkt_count':df.loc[df._id==idd,'cumultv_pkt_count'].values[0]
-                                                    ,'service_orig_freq':df.loc[df._id==idd,'service_orig_freq'].values[0]
-                                                    ,'history_orig_freq':df.loc[df._id==idd,'history_orig_freq'].values[0]
-                                                    ,'conn_state_orig_freq':df.loc[df._id==idd,'conn_state_orig_freq'].values[0]
+                                                    ,'proto_freq':df.loc[df._id==idd,'proto_freq'].values[0]
+                                                    ,'service_freq':df.loc[df._id==idd,'service_freq'].values[0]
+                                                    ,'history_freq':df.loc[df._id==idd,'history_freq'].values[0]
+                                                    ,'proto_jsd':df.loc[df._id==idd,'proto_jsd'].values[0]
+                                                    ,'service_jsd':df.loc[df._id==idd,'service_jsd'].values[0]
+                                                    ,'history_jsd':df.loc[df._id==idd,'history_jsd'].values[0]
+                                                    ,'conn_state_freq':df.loc[df._id==idd,'conn_state_freq'].values[0]
                                                     ,'mcd':json_bool(df.loc[df._id==idd,'mcd'].values[0])
                                                     ,'SD':json_bool(df.loc[df._id==idd,'SD'].values[0])
                                                     ,'SD_anomaly':json_bool(df.loc[df._id==idd,'SD_anomaly'].values[0])
@@ -530,7 +549,6 @@ for index in range(intervals):
     elapsed_bulk=timeit.default_timer()-time_bulk
 #    
     llp=json.dumps(outly_pairs)
-    ld2=pd.DataFrame(loadings,index=df_feature_cols1)
     collection_bins.update_one({'pcap_dir':pcap_dir,'index':index},{'$set':{'outlying_pairs':llp,'PCs':ld2.to_json()}},upsert=False)
     msg='finished processing bin. Line513: directory= '+pcap_dir+':index='+str(index)
     myLogger.error(msg)

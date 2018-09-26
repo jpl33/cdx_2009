@@ -96,7 +96,7 @@ important_ports=[80,139,445,137,135,111,23,21,22,53]
 snrt_frmt=['timestamp','sig_generator','sig_id','sig_rev','msg','proto','src','srcport','dst','dstport','ethsrc','ethdst','ethlen','tcpflags','tcpseq','tcpack','tcplen','tcpwindow','ttl','tos','id','dgmlen','iplen','icmptype','icmpcode','icmpid','icmpseq']
 
 
-inside_train_coll=get_db()['maccdc2012_00002_train']
+inside_train_coll=get_db()['maccdc2012_00002_train_bro']
 #inside_train_coll.insert_many(df_dict2)
 
 #with open(home_dir+'\\maccdc2012_00002\\alert.csv' ,'r') as snort_f:
@@ -129,7 +129,7 @@ first_line=pd.DataFrame(list(first_doc)).to_dict(orient='records')
 first_ts=first_line[0]['timestamp']
 
 #doc_list= inside_train_coll.find()
-doc_list=inside_train_coll.find({'timestamp':{'$lte':first_ts+15}})
+doc_list=inside_train_coll.find({'timestamp':{'$lte':first_ts+10}})
 conn_df_db=pd.DataFrame(list(doc_list))
 conn_df_db=conn_df_db.fillna(0)
 conn_df_shape=conn_df_db.shape[0]

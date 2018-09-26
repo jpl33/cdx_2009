@@ -19,8 +19,7 @@ import logging
 import time
 import datetime
 import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set(style="white", color_codes=True, context="talk")
+
 import gc
 
 home_dir='D:\\personal\\msc\\maccdc_2012\\'
@@ -79,7 +78,7 @@ dl=next(os.walk(home_dir+wpi_dir))[2]
 dl.sort()
 remove=[]
 
-inside_outside_flag='outside'
+inside_outside_flag='inside'
 train_test_flag='train'
 
 
@@ -96,7 +95,7 @@ conn_df_db=pd.DataFrame(list(doc_list))
 conn_df_db=conn_df_db.fillna(0)
 
 no_columns=['_id','timestamp','src_ip_addr','dst_ip_addr','src_port','dst_port','ip_proto','attack','pkt_len']
-df_mat=conn_df_db.loc[9400:,conn_df_db.columns.difference(no_columns)].as_matrix()
+df_mat=conn_df_db.loc[:,conn_df_db.columns.difference(no_columns)].as_matrix()
 msg='start first rpca. Line104'
 myLogger.error(msg)
 
@@ -108,7 +107,7 @@ df_mat_r=robjects.r.matrix(df_mat,nrow=df_mat.shape[0])
 print('lulu')
 aa3=3
 #del(df_mat)
-del(conn_df_db)
+#del(conn_df_db)
 gc.collect()
 #rpca=rpca_pkg.rpca(df_mat,**{'lambda': 0.1})
 #L_matrix=np.array(rpca[0])
@@ -140,7 +139,7 @@ gc.collect()
 #plt.show()
 
 from sklearn.metrics import roc_curve, roc_auc_score,precision_recall_curve,f1_score
-lambda_c=list(np.arange(0.03,0.15,0.03))
+lambda_c=list(np.arange(0.03,0.18,0.03))
 fig_plot, (ax_roc,ax_pr) = plt.subplots(1,2, sharex=True, sharey=True,figsize=(20,18))
 ax_roc.set_xlim([-0.05,1.05])
 ax_roc.set_ylim([-0.05,1.05])
@@ -157,7 +156,7 @@ auc_list=list()
 f1_list=list()
 #alpha=list(np.arange(0.95,0.55,-0.05))
 alpha=0.95
-for ll,k in zip(lambda_c,'bgrc'):#mykw'):
+for ll,k in zip(lambda_c,'bgrcm'):#mykw'):
     s_time=time.time()
     rpca=rpca_pkg.rpca(df_mat,**{'lambda': ll})
     e_time=time.time()
